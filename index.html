@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>All-Ireland Transport Availability & Load Matcher (Load Status)</title>
+<title>All-Ireland Transport Availability &amp; Load Matcher (Load Status)</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Inter", system-ui, -apple-system, sans-serif; background: #070d19; color: #f1f5f9; display: flex; height: 100vh; overflow: hidden; }
@@ -180,7 +180,7 @@
 </head>
 <body>
 <div class="sidebar">
-  <div class="header"><h1>All-Ireland Transport Board</h1><span class="pill" id="status">v19.1-IE LIVE</span></div>
+  <div class="header"><h1>All-Ireland Transport Board</h1><span class="pill" id="status">v19.2-IE LIVE</span></div>
   <div class="sync-bar"><span id="sync-info">Connecting to crew board...</span><span id="last-time">--:--</span></div>
   <div class="stats">
     <div class="stat"><b id="s-units">0</b><span>Available</span></div>
@@ -604,7 +604,6 @@ var HUBS = {
   "fermanagh":          ["Co. Fermanagh",               54.3447, -7.6319, "Northern Ireland"]
 };
 
-// Sort HUBS keys longest-first so multi-word hubs match before single words
 var HUB_KEYS = Object.keys(HUBS).sort(function(a, b) { return b.length - a.length; });
 
 var EIRCODE_KEYS = {
@@ -749,7 +748,7 @@ var EIRCODE_KEYS = {
 };
 
 var CACHE = {}, BUSY = {}, MISS = {}, timer = null, pushTimer = null, isTyping = false, lastSnapshot = "", chatMessages = [], loadStatuses = {};
-try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v191") || "{}"); } catch (e) {}
+try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v192") || "{}"); } catch (e) {}
 
 function miles(a, b) {
   var dLat = (b.lat - a.lat) * 0.0174533, dLon = (b.lon - a.lon) * 0.0174533;
@@ -949,12 +948,11 @@ function lookup(q) {
   if (eir && !eir.full) {
     delete BUSY[q];
     CACHE[q] = EIRCODE_KEYS[eir.key];
-    try { localStorage.setItem("ie_geo_v191", JSON.stringify(CACHE)); } catch (e) {}
+    try { localStorage.setItem("ie_geo_v192", JSON.stringify(CACHE)); } catch (e) {}
     run();
     return;
   }
 
-  // Uses postcodes.io for Northern Ireland BT codes, and Photon (Komoot/OSM) for Ireland (works from file:// without Referer blocks)
   var url = isBtFull ? ("https://api.postcodes.io/postcodes/" + encodeURIComponent(joined))
           : isBtOut  ? ("https://api.postcodes.io/outcodes/" + encodeURIComponent(w[0]))
           : eir      ? ("https://photon.komoot.io/api/?limit=1&lat=53.4&lon=-7.8&q=" + encodeURIComponent(eir.full + " Ireland"))
@@ -977,7 +975,7 @@ function lookup(q) {
     } else {
       MISS[q] = true;
     }
-    try { localStorage.setItem("ie_geo_v191", JSON.stringify(CACHE)); } catch (e) {}
+    try { localStorage.setItem("ie_geo_v192", JSON.stringify(CACHE)); } catch (e) {}
     run();
   }).catch(function() {
     delete BUSY[q];
