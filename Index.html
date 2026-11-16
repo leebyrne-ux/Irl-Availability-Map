@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All-Ireland Transport Availability & Load Matcher (Load Status)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Inter", system-ui, -apple-system, sans-serif; background: #070d19; color: #f1f5f9; display: flex; height: 100vh; overflow: hidden; }
+
+  .sidebar { width: 415px; background: #0f172a; border-right: 1px solid #1e293b; display: flex; flex-direction: column; padding: 14px 16px; gap: 9px; overflow-y: auto; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,0.4); }
+  .header { display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: #f8fafc; }
+  .pill { font-size: 10px; font-weight: 700; color: #34d399; background: rgba(16,185,129,0.12); border: 1px solid rgba(52,211,153,0.35); padding: 3px 9px; border-radius: 99px; letter-spacing: 0.03em; }
+  .pill.busy { color: #fbbf24; border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.15); }
+  .pill.err { color: #fca5a5; border-color: rgba(239,68,68,0.5); background: rgba(239,68,68,0.15); }
+
+  .sync-bar { font-size: 11px; color: #94a3b8; background: #090f1d; border: 1px solid #1e293b; border-radius: 7px; padding: 5px 10px; display: flex; justify-content: space-between; align-items: center; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: linear-gradient(180deg, #131c31 0%, #0b1222 100%); border: 1px solid #1e293b; border-radius: 8px; padding: 7px 6px; text-align: center; }
+  .stat b { font-size: 18px; color: #38bdf8; display: block; line-height: 1.1; }
+  .stat.g b { color: #34d399; }
+  .stat span { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-top: 2px; display: block; }
+
+  label { font-size: 11.5px; font-weight: 600; color: #cbd5e1; display: flex; justify-content: space-between; margin-bottom: 4px; }
+  textarea, input[type="text"] { width: 100%; background: #090f1d; color: #f8fafc; border: 1px solid #1e293b; border-radius: 7px; padding: 7px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.4; transition: border-color 0.15s; }
+  #avail { height: 100px; resize: vertical; }
+  #loads { height: 54px; resize: vertical; border-color: rgba(16,185,129,0.35); }
+  textarea:focus, input[type="text"]:focus { outline: none; border-color: #38bdf8; }
+  #loads:focus { border-color: #34d399; }
+
+  .btns { display: flex; gap: 8px; }
+  button { cursor: pointer; border: none; border-radius: 7px; padding: 7px 11px; font-size: 11.5px; font-weight: 600; transition: 0.15s; }
+  .btn-sub { background: #162036; color: #cbd5e1; border: 1px solid #24324d; flex: 1; }
+  .btn-sub:hover { color: #f8fafc; border-color: #3b4f75; background: #1c2944; }
+  .btn-danger:hover { color: #fca5a5; border-color: rgba(239,68,68,0.5); }
+  .btn-send { background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%); color: #04101f; font-weight: 700; padding: 7px 12px; }
+  .btn-send:hover { filter: brightness(1.08); }
+
+  .msg { font-size: 11px; padding: 5px 9px; border-radius: 6px; display: none; background: rgba(239,68,68,0.12); color: #fca5a5; border: 1px solid rgba(239,68,68,0.35); }
+  .sec { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; display: flex; justify-content: space-between; align-items: center; }
+  .list { display: flex; flex-direction: column; gap: 5px; overflow-y: auto; max-height: 155px; padding-right: 2px; }
+  .card { background: #111a2e; border: 1px solid #1e293b; border-radius: 7px; padding: 7px 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; transition: 0.15s; }
+  .card:hover { border-color: #334155; }
+  .card.ld { border-left: 3px solid #10b981; }
+  .card.hz { border-left: 3px solid #ef4444; background: rgba(239,68,68,0.08); }
+
+  /* Load Offer Status States (Uncovered = Red X, Booked = Green Tick) */
+  .card.ld.uncovered { border-color: rgba(239,68,68,0.45); border-left: 3px solid #ef4444; background: rgba(239,68,68,0.12); }
+  .card.ld.uncovered .card-title { color: #f87171 !important; text-decoration: line-through; }
+  .card.ld.uncovered .card-sub { color: #fca5a5 !important; }
+  .card.ld.booked { border-color: rgba(16,185,129,0.65); border-left: 3px solid #10b981; background: rgba(16,185,129,0.14); }
+  .card.ld.booked .card-title { color: #34d399 !important; }
+
+  .load-mid { flex: 1; min-width: 0; }
+  .card-title { font-size: 12.5px; font-weight: 600; color: #f1f5f9; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+  .card-sub { font-size: 10.5px; color: #94a3b8; margin-top: 2px; }
+
+  /* Red X (Left) & Green Tick (Right) Action Checkboxes */
+  .status-chk {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 0;
+    flex-shrink: 0;
+    border: 1.5px solid #334155;
+    background: #090f1d;
+    color: #64748b;
+  }
+  .status-chk.no-btn:hover { border-color: #ef4444; color: #f87171; background: rgba(239,68,68,0.12); }
+  .status-chk.no-btn.active { background: #ef4444; border-color: #ef4444; color: #ffffff; box-shadow: 0 0 10px rgba(239,68,68,0.45); }
+
+  .status-chk.ok-btn:hover { border-color: #10b981; color: #34d399; background: rgba(16,185,129,0.12); }
+  .status-chk.ok-btn.active { background: #10b981; border-color: #10b981; color: #04101f; box-shadow: 0 0 10px rgba(16,185,129,0.45); }
+
+  .tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(56,189,248,0.14); color: #38bdf8; border: 1px solid rgba(56,189,248,0.35); white-space: nowrap; }
+  .tag.t { color: #fbbf24; background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.35); }
+  .tag.n { color: #c084fc; background: rgba(168,85,247,0.14); border-color: rgba(168,85,247,0.35); }
+  .tag.g { color: #34d399; background: rgba(16,185,129,0.14); border-color: rgba(16,185,129,0.35); }
+  .tag.h { color: #fca5a5; background: rgba(239,68,68,0.22); border-color: rgba(239,68,68,0.55); font-size: 9.5px; padding: 1px 5px; }
+  .tag.bk { color: #04101f; background: #34d399; border-color: #34d399; font-size: 9.5px; padding: 1px 6px; }
+  .tag.nc { color: #ffffff; background: #ef4444; border-color: #ef4444; font-size: 9.5px; padding: 1px 6px; }
+
+  /* Crew Chat Box */
+  .chat-box { background: #090f1d; border: 1px solid #1e293b; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+  .chat-feed { max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; padding-right: 2px; }
+  .chat-empty { color: #475569; font-size: 11px; text-align: center; padding: 10px 4px; }
+  .chat-item { background: #111a2e; border: 1px solid #1e293b; border-radius: 6px; padding: 5px 8px; line-height: 1.35; }
+  .chat-meta { display: flex; justify-content: space-between; font-size: 10px; color: #38bdf8; font-weight: 700; margin-bottom: 2px; }
+  .chat-meta span { color: #64748b; font-weight: 500; }
+  .chat-text { color: #e2e8f0; word-break: break-word; }
+  .chat-row { display: flex; gap: 5px; }
+  .chat-name { width: 76px !important; flex-shrink: 0; font-family: inherit; font-size: 11.5px; }
+  .chat-input { flex: 1; font-family: inherit; font-size: 11.5px; }
+  .link-clear { background: none; border: none; color: #64748b; font-size: 10px; padding: 0; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; }
+  .link-clear:hover { color: #fca5a5; }
+
+  .map {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 48%, #0f1c33 0%, #070d19 78%, #040811 100%);
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+  }
+  .map.dragging { cursor: grabbing; }
+  svg { width: 100%; height: 100%; }
+
+  .legend {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(8px);
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    color: #94a3b8;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.haz-ring { background: #38bdf8; border: 2px solid #ef4444; box-shadow: 0 0 8px #ef4444; }
+  .dia { width: 9px; height: 9px; background: #10b981; transform: rotate(45deg); display: inline-block; }
+  .dia.hz { background: #ef4444; border: 1px solid #fbbf24; }
+
+  .zoom-controls {
+    position: absolute;
+    bottom: 18px;
+    right: 18px;
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid #1e293b;
+    border-radius: 9px;
+    padding: 6px 8px;
+    z-index: 15;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+  .zoom-btn { background: #090f1d; color: #e2e8f0; border: 1px solid #24324d; border-radius: 6px; padding: 5px 10px; font-size: 13px; font-weight: 700; }
+  .zoom-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+  .zoom-level { font-size: 11px; font-weight: 700; color: #94a3b8; min-width: 44px; text-align: center; }
+  .zoom-hint { position: absolute; bottom: 18px; left: 18px; font-size: 11px; color: #64748b; background: rgba(9,15,29,0.8); border: 1px solid #1e293b; padding: 5px 10px; border-radius: 7px; pointer-events: none; }
+
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(9, 15, 29, 0.96);
+    border: 1px solid #38bdf8;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 12px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.6);
+    display: none;
+    z-index: 25;
+    min-width: 175px;
+  }
+
+  .pin-node { cursor: pointer; }
+  .lbl-bg { fill: rgba(9, 15, 29, 0.86); stroke: rgba(51, 65, 85, 0.7); stroke-width: 0.8px; rx: 4; ry: 4; }
+  .lbl-bg.g { stroke: rgba(16, 185, 129, 0.55); }
+  .lbl-bg.h { fill: rgba(69, 10, 10, 0.92); stroke: rgba(239, 68, 68, 0.8); }
+  .lbl { font-size: 10.5px; font-weight: 600; fill: #f8fafc; }
+  .lbl.g { fill: #6ee7b7; font-weight: 700; }
+  .lbl.h { fill: #fecaca; font-weight: 700; }
+  .cnt { font-size: 9.5px; font-weight: 800; fill: #04101f; text-anchor: middle; dominant-baseline: central; }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="header"><h1>All-Ireland Transport Board</h1><span class="pill" id="status">v19.0-IE LIVE</span></div>
+  <div class="sync-bar"><span id="sync-info">Connecting to crew board...</span><span id="last-time">--:--</span></div>
+  <div class="stats">
+    <div class="stat"><b id="s-units">0</b><span>Available</span></div>
+    <div class="stat"><b id="s-hubs">0</b><span>Hubs</span></div>
+    <div class="stat g"><b id="s-loads">0</b><span>Offers</span></div>
+  </div>
+  <div>
+    <label><span>1. Crew Fleet Availability</span><span style="color:#38bdf8;font-size:11px;">Eircodes &bull; BT &bull; Haz/ADR</span></label>
+    <textarea id="avail" oninput="onUserEdit()" placeholder="e.g. Locals x 3&#10;Dublin Port x 2 Haz&#10;Munster&#10;Belfast 0700, 1000"></textarea>
+  </div>
+  <div>
+    <label><span>2. Potential Load Offers</span><span style="color:#34d399;font-size:11px;">&#10005; No Cover &bull; &#10003; Booked</span></label>
+    <textarea id="loads" oninput="onUserEdit()" placeholder="e.g. Cork Haz, Galway, BT36, Y35"></textarea>
+  </div>
+  <div class="btns">
+    <button type="button" class="btn-sub" onclick="clearLoadsOnly()">Clear Loads</button>
+    <button type="button" class="btn-sub btn-danger" onclick="clearAllBoard()">Clear All</button>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div class="sec" id="hdr-loads" style="display:none;color:#6ee7b7;">
+    <span>Offered Loads</span>
+    <span style="font-size:9.5px;color:#94a3b8;font-weight:600;">&#10005; NO COVER &nbsp;|&nbsp; &#10003; BOOKED</span>
+  </div>
+  <div id="list-loads" style="display:flex;flex-direction:column;gap:5px;"></div>
+  <div class="sec">Available Fleet Hubs</div>
+  <div class="list" id="list-hubs"></div>
+
+  <!-- Live Crew Notes / Message Box -->
+  <div class="chat-box">
+    <div class="sec">
+      <span>Crew Notes &amp; Messages</span>
+      <button type="button" class="link-clear" onclick="clearChat()">Clear Chat</button>
+    </div>
+    <div class="chat-feed" id="chat-feed">
+      <div class="chat-empty">No messages yet. Post a quick note for the crew below.</div>
+    </div>
+    <div class="chat-row">
+      <input type="text" id="chat-name" class="chat-name" placeholder="Name" maxlength="16" onchange="saveName()">
+      <input type="text" id="chat-input" class="chat-input" placeholder="Message crew..." maxlength="180" onkeydown="if(event.key==='Enter')sendMessage()">
+      <button type="button" class="btn-send" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+<div class="map" id="map-wrap">
+  <div class="legend">
+    <b style="color:#f8fafc;font-size:12px;">Map Key</b>
+    <div class="row"><span class="dot" style="background:#38bdf8;box-shadow:0 0 8px #38bdf8;"></span> Available Fleet</div>
+    <div class="row"><span class="dot haz-ring"></span> &#9763; ADR / Haz Driver</div>
+    <div class="row"><span class="dot" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b;"></span> Timed Wave</div>
+    <div class="row"><span class="dot" style="background:#a855f7;box-shadow:0 0 8px #a855f7;"></span> Night Drivers</div>
+    <div class="row"><span class="dia"></span> Standard / Booked Load</div>
+    <div class="row"><span class="dia hz"></span> &#9763; Haz / Uncovered Load</div>
+  </div>
+
+  <div class="zoom-hint">Scroll wheel to zoom &bull; Drag to pan &bull; Auto-syncs with crew</div>
+  <div class="zoom-controls">
+    <button type="button" class="zoom-btn" onclick="stepZoom(-0.45)" title="Zoom Out">&minus;</button>
+    <span class="zoom-level" id="zoom-pct">100%</span>
+    <button type="button" class="zoom-btn" onclick="stepZoom(0.45)" title="Zoom In">+</button>
+    <button type="button" class="zoom-btn" onclick="resetZoom()" title="Reset View">Reset</button>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <svg id="ie-svg" viewBox="0 0 640 880">
+    <defs>
+      <linearGradient id="ieLandGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1e293b"/>
+        <stop offset="55%" stop-color="#182234"/>
+        <stop offset="100%" stop-color="#131c2e"/>
+      </linearGradient>
+      <filter id="landGlow" x="-10%" y="-10%" width="120%" height="120%">
+        <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#020617" flood-opacity="0.75"/>
+      </filter>
+      <filter id="pinShadow" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.75"/>
+      </filter>
+    </defs>
+
+    <g id="viewport">
+      <g id="grid-layer" stroke="#132038" stroke-width="1" stroke-dasharray="3 5"></g>
+      <g id="gb-ref-layer" fill="#101827" stroke="#243249" stroke-width="1.3" stroke-linejoin="round"></g>
+      <g id="land-layer" fill="url(#ieLandGrad)" stroke="#3b5278" stroke-width="1.8" stroke-linejoin="round" filter="url(#landGlow)"></g>
+      <g id="border-layer" fill="none" stroke="#334155" stroke-width="1.2" stroke-dasharray="4 4" stroke-linecap="round"></g>
+      <g id="road-layer" fill="none" stroke="#283956" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></g>
+      <g id="lines"></g>
+      <g id="pins"></g>
+    </g>
+  </svg>
+</div>
+
+<script>
+// PASTE YOUR FIREBASE REALTIME DATABASE URL BELOW (uses /ireland-board.json automatically):
+var DB_URL = "PASTE_YOUR_FIREBASE_URL_HERE";
+
+while (DB_URL.length > 0 && DB_URL.charAt(DB_URL.length - 1) === "/") {
+  DB_URL = DB_URL.slice(0, -1);
+}
+
+try {
+  var savedUser = localStorage.getItem("ie_crew_name");
+  if (savedUser) document.getElementById("chat-name").value = savedUser;
+} catch (e) {}
+
+function saveName() {
+  try { localStorage.setItem("ie_crew_name", document.getElementById("chat-name").value.trim()); } catch (e) {}
+}
+
+// Calibrated Mercator-style projection centered on the Island of Ireland (51.3N-55.5N, 10.7W-5.3W)
+function pt(lat, lon) {
+  return {
+    x: 318 + ((lon + 8.0) * 104.0),
+    y: 465 - ((lat - 53.35) * 172.0)
+  };
+}
+
+(function buildTrueGeoMap() {
+  var ns = "http://www.w3.org/2000/svg";
+
+  function coordsToPath(coords, close) {
+    var d = "";
+    for (var i = 0; i < coords.length; i++) {
+      var p = pt(coords[i][0], coords[i][1]);
+      d += (i === 0 ? "M " : " L ") + p.x.toFixed(1) + "," + p.y.toFixed(1);
+    }
+    return close ? d + " Z" : d;
+  }
+
+  // Detailed Island of Ireland Coastline (Republic + Northern Ireland)
+  var IRELAND_MAINLAND = [
+    // North Coast (Malin Head -> Fair Head)
+    [55.38,-7.37],[55.28,-7.62],[55.25,-7.95],[55.16,-8.28],[54.96,-8.46],[54.82,-8.45],
+    [54.68,-8.78],[54.62,-8.45],[54.63,-8.15],[54.48,-8.28],[54.44,-8.46],
+    // North-West & Connacht (Sligo -> Erris -> Clew Bay -> Connemara -> Galway Bay)
+    [54.32,-8.68],[54.28,-9.12],[54.34,-9.35],[54.29,-9.98],[54.12,-10.12],[53.95,-9.95],
+    [53.88,-9.62],[53.78,-9.65],[53.74,-9.92],[53.58,-10.15],[53.42,-10.12],[53.32,-9.85],
+    [53.24,-9.55],[53.26,-9.05],[53.15,-9.12],[53.02,-9.40],
+    // Munster West & South-West Peninsulas (Clare -> Shannon -> Kerry -> West Cork)
+    [52.75,-9.65],[52.56,-9.94],[52.58,-9.50],[52.66,-8.65],[52.56,-9.35],[52.48,-9.75],
+    [52.28,-9.85],[52.26,-10.15],[52.12,-10.48],[52.08,-10.12],[52.12,-9.82],[51.96,-10.22],
+    [51.78,-10.15],[51.75,-9.85],[51.84,-9.62],[51.65,-9.95],[51.55,-9.82],[51.62,-9.52],
+    [51.48,-9.65],[51.46,-9.35],[51.55,-9.02],
+    // South Coast (Kinsale -> Cork Harbour -> Youghal -> Dungarvan -> Waterford -> Hook Head)
+    [51.62,-8.52],[51.80,-8.30],[51.85,-8.12],[51.92,-7.85],[52.02,-7.62],[52.12,-7.35],
+    [52.14,-6.98],[52.12,-6.92],[52.24,-6.96],[52.18,-6.85],
+    // South-East & East Coast (Kilmore Quay -> Carnsore -> Rosslare -> Wexford -> Wicklow -> Dublin -> Dundalk)
+    [52.17,-6.58],[52.17,-6.36],[52.25,-6.33],[52.34,-6.44],[52.36,-6.38],[52.52,-6.22],
+    [52.79,-6.14],[52.98,-6.02],[53.20,-6.09],[53.28,-6.13],[53.35,-6.18],[53.39,-6.06],
+    [53.45,-6.14],[53.62,-6.18],[53.72,-6.24],[53.98,-6.35],[54.01,-6.12],[54.05,-6.05],
+    // Ulster East & North-East Coast (Carlingford -> Strangford -> Belfast Lough -> Larne -> Rathlin/Portrush -> Lough Foyle)
+    [54.12,-5.92],[54.25,-5.62],[54.35,-5.55],[54.52,-5.52],[54.66,-5.54],[54.62,-5.88],
+    [54.72,-5.72],[54.86,-5.80],[55.02,-5.95],[55.22,-6.12],[55.24,-6.48],[55.20,-6.72],
+    [55.18,-6.95],[55.12,-7.18],[55.22,-7.05],[55.32,-7.22]
+  ];
+
+  // Key Offshore Islands
+  var ACHILL_ISLAND = [[54.01,-10.12],[54.00,-9.92],[53.91,-9.93],[53.93,-10.18]];
+  var ARAN_ISLANDS  = [[53.15,-9.80],[53.11,-9.62],[53.08,-9.65],[53.12,-9.83]];
+  var RATHLIN       = [[55.31,-6.27],[55.29,-6.17],[55.27,-6.20],[55.29,-6.28]];
+
+  // Subtle Reference Context Coastlines (Wales, Cumbria/NW England, SW Scotland)
+  var WALES_REF = [
+    [53.41,-4.48],[53.32,-4.08],[53.24,-3.83],[53.33,-3.48],[53.36,-3.18],[53.05,-3.05],
+    [52.72,-4.06],[52.92,-4.12],[52.80,-4.76],[52.42,-4.08],[52.12,-4.65],[51.90,-5.28],
+    [51.70,-5.15],[51.65,-4.92],[51.75,-4.32],[51.56,-3.96]
+  ];
+  var SCOTLAND_SW_REF = [
+    [55.65,-4.82],[55.46,-4.63],[55.04,-5.12],[54.82,-4.95],[54.64,-4.88],[54.76,-4.38],
+    [54.88,-3.60],[55.32,-5.62],[55.42,-5.52],[55.85,-5.42]
+  ];
+  var ISLE_OF_MAN_REF = [[54.41,-4.38],[54.22,-4.35],[54.06,-4.62],[54.24,-4.72]];
+
+  var landLayer = document.getElementById("land-layer");
+  var polyList = [IRELAND_MAINLAND, ACHILL_ISLAND, ARAN_ISLANDS, RATHLIN];
+  for (var i = 0; i < polyList.length; i++) {
+    var p = document.createElementNS(ns, "path");
+    p.setAttribute("d", coordsToPath(polyList[i], true));
+    landLayer.appendChild(p);
+  }
+
+  var gbLayer = document.getElementById("gb-ref-layer");
+  var gbPolys = [WALES_REF, SCOTLAND_SW_REF, ISLE_OF_MAN_REF];
+  for (var g = 0; g < gbPolys.length; g++) {
+    var gp = document.createElementNS(ns, "path");
+    gp.setAttribute("d", coordsToPath(gbPolys[g], true));
+    gbLayer.appendChild(gp);
+  }
+
+  // Subtle NI / ROI Border Line
+  var NI_BORDER = [
+    [54.05,-6.18],[54.08,-6.42],[54.15,-6.65],[54.12,-6.95],[54.22,-7.25],
+    [54.15,-7.55],[54.25,-7.85],[54.42,-8.05],[54.48,-8.22],[54.62,-7.85],
+    [54.75,-7.65],[54.92,-7.48],[55.05,-7.35]
+  ];
+  var bp = document.createElementNS(ns, "path");
+  bp.setAttribute("d", coordsToPath(NI_BORDER, false));
+  document.getElementById("border-layer").appendChild(bp);
+
+  // Key Irish Arterial Motorways (M1/A1, M2, M4/M6, M7, M8, M9, M11)
+  var ROADS = [
+    // M1 / A1: Dublin -> Drogheda -> Dundalk -> Newry -> Lisburn -> Belfast
+    [[53.35,-6.26],[53.71,-6.35],[54.00,-6.40],[54.18,-6.34],[54.43,-6.44],[54.51,-6.04],[54.60,-5.93]],
+    // M2 / A6: Belfast -> Antrim -> Ballymena -> Derry
+    [[54.60,-5.93],[54.72,-6.21],[54.86,-6.28],[55.00,-7.31]],
+    // M4 / M6: Dublin -> Maynooth -> Mullingar -> Athlone -> Ballinasloe -> Galway
+    [[53.35,-6.26],[53.38,-6.59],[53.52,-7.34],[53.42,-7.94],[53.33,-8.22],[53.27,-9.05]],
+    // M7: Naas -> Portlaoise -> Roscrea -> Nenagh -> Limerick -> Shannon
+    [[53.22,-6.66],[53.03,-7.30],[52.95,-7.80],[52.86,-8.20],[52.66,-8.63],[52.71,-8.87]],
+    // M8: Portlaoise -> Cashel -> Cahir -> Mitchelstown -> Fermoy -> Cork / Ringaskiddy
+    [[53.03,-7.30],[52.52,-7.89],[52.37,-7.92],[52.27,-8.27],[52.14,-8.28],[51.90,-8.47],[51.83,-8.32]],
+    // M9: Naas -> Carlow -> Kilkenny -> Waterford / Belview
+    [[53.22,-6.66],[52.84,-6.93],[52.65,-7.25],[52.26,-7.11]],
+    // M11 / N11: Dublin -> Bray -> Wicklow -> Arklow -> Gorey -> Enniscorthy -> Wexford -> Rosslare
+    [[53.35,-6.26],[53.20,-6.11],[52.98,-6.05],[52.79,-6.16],[52.67,-6.29],[52.50,-6.57],[52.34,-6.46],[52.25,-6.34]]
+  ];
+  var roadLayer = document.getElementById("road-layer");
+  for (var r = 0; r < ROADS.length; r++) {
+    var rp = document.createElementNS(ns, "path");
+    rp.setAttribute("d", coordsToPath(ROADS[r], false));
+    roadLayer.appendChild(rp);
+  }
+
+  // Lat/Lon Reference Grid
+  var gridLayer = document.getElementById("grid-layer");
+  var lats = [52, 53, 54, 55];
+  for (var la = 0; la < lats.length; la++) {
+    var p1 = pt(lats[la], -11.2), p2 = pt(lats[la], -4.5);
+    var gl = document.createElementNS(ns, "line");
+    gl.setAttribute("x1", p1.x); gl.setAttribute("y1", p1.y); gl.setAttribute("x2", p2.x); gl.setAttribute("y2", p2.y);
+    gridLayer.appendChild(gl);
+  }
+  var lons = [-10, -9, -8, -7, -6];
+  for (var lo = 0; lo < lons.length; lo++) {
+    var p3 = pt(51.0, lons[lo]), p4 = pt(55.8, lons[lo]);
+    var gl2 = document.createElementNS(ns, "line");
+    gl2.setAttribute("x1", p3.x); gl2.setAttribute("y1", p3.y); gl2.setAttribute("x2", p4.x); gl2.setAttribute("y2", p4.y);
+    gridLayer.appendChild(gl2);
+  }
+})();
+
+// Pan & Pinpoint-Zoom State
+var zoomScale = 1, panX = 0, panY = 0, isDragging = false, dragStartX = 0, dragStartY = 0;
+
+function applyTransform() {
+  var vp = document.getElementById("viewport");
+  if (vp) vp.setAttribute("transform", "translate(" + panX.toFixed(1) + "," + panY.toFixed(1) + ") scale(" + zoomScale.toFixed(3) + ")");
+
+  var land = document.getElementById("land-layer");
+  var road = document.getElementById("road-layer");
+  if (land) land.setAttribute("stroke-width", (1.8 / zoomScale).toFixed(2));
+  if (road) road.setAttribute("stroke-width", (1.7 / zoomScale).toFixed(2));
+
+  var inv = (1 / zoomScale).toFixed(4);
+  var pinNodes = document.querySelectorAll(".pin-node");
+  for (var i = 0; i < pinNodes.length; i++) {
+    var px = pinNodes[i].getAttribute("data-x");
+    var py = pinNodes[i].getAttribute("data-y");
+    pinNodes[i].setAttribute("transform", "translate(" + px + "," + py + ") scale(" + inv + ")");
+  }
+
+  var connLines = document.querySelectorAll(".conn-line");
+  for (var j = 0; j < connLines.length; j++) {
+    var baseW = parseFloat(connLines[j].getAttribute("data-w") || "2");
+    connLines[j].setAttribute("stroke-width", (baseW / zoomScale).toFixed(2));
+  }
+
+  var pct = document.getElementById("zoom-pct");
+  if (pct) pct.textContent = Math.round(zoomScale * 100) + "%";
+}
+
+function stepZoom(delta) {
+  var oldScale = zoomScale;
+  zoomScale = Math.max(0.85, Math.min(12, zoomScale + delta));
+  var ratio = zoomScale / oldScale;
+  panX = 320 - (320 - panX) * ratio;
+  panY = 440 - (440 - panY) * ratio;
+  applyTransform();
+}
+
+function resetZoom() {
+  zoomScale = 1; panX = 0; panY = 0;
+  applyTransform();
+}
+
+(function initPanZoom() {
+  var wrap = document.getElementById("map-wrap");
+  var svg = document.getElementById("ie-svg");
+
+  wrap.addEventListener("wheel", function(e) {
+    e.preventDefault();
+    var rect = svg.getBoundingClientRect();
+    var svgX = ((e.clientX - rect.left) / rect.width) * 640;
+    var svgY = ((e.clientY - rect.top) / rect.height) * 880;
+    var factor = e.deltaY < 0 ? 1.25 : 0.8;
+    var newScale = Math.max(0.85, Math.min(12, zoomScale * factor));
+    var ratio = newScale / zoomScale;
+    panX = svgX - (svgX - panX) * ratio;
+    panY = svgY - (svgY - panY) * ratio;
+    zoomScale = newScale;
+    applyTransform();
+  }, { passive: false });
+
+  wrap.addEventListener("mousedown", function(e) {
+    if (e.target && e.target.tagName === "BUTTON") return;
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    wrap.className = "map dragging";
+  });
+
+  window.addEventListener("mousemove", function(e) {
+    if (!isDragging) return;
+    var rect = svg.getBoundingClientRect();
+    panX += (e.clientX - dragStartX) * (640 / rect.width);
+    panY += (e.clientY - dragStartY) * (880 / rect.height);
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    applyTransform();
+  });
+
+  window.addEventListener("mouseup", function() {
+    if (isDragging) {
+      isDragging = false;
+      wrap.className = "map";
+    }
+  });
+})();
+
+// All-Ireland Hubs, Provinces, Ports & Counties
+var HUBS = {
+  // Local Patch & Provincial / Regional Shortcuts
+  "local":         ["Locals (Wexford / Rosslare)", 52.3369, -6.4633, "Wexford / Rosslare / Enniscorthy / Gorey"],
+  "locals":        ["Locals (Wexford / Rosslare)", 52.3369, -6.4633, "Wexford / Rosslare / Enniscorthy / Gorey"],
+  "leinster":      ["Leinster Region",             53.2500, -6.7500, "Leinster Province (M1/M4/M7/M9/M11)"],
+  "munster":       ["Munster Region",              52.3500, -8.3500, "Munster Province (M7/M8/N20/N25)"],
+  "connacht":      ["Connacht Region",             53.6500, -8.8500, "Connacht Province (M6/N17/N4)"],
+  "connaught":     ["Connacht Region",             53.6500, -8.8500, "Connacht Province (M6/N17/N4)"],
+  "ulster":        ["Ulster Region",               54.5500, -6.7500, "Ulster Province (NI & Border)"],
+  "midlands":      ["Midlands Area",               53.4239, -7.9407, "Irish Midlands (Athlone / Tullamore / Mullingar)"],
+  "south east":    ["South East Region",           52.4500, -6.8500, "Wexford / Waterford / Kilkenny / Carlow"],
+  "north west":    ["North West Region",           54.4500, -8.1500, "Sligo / Donegal / Leitrim / Derry"],
+  "border":        ["Border Corridor",             54.0500, -6.5500, "Dundalk / Newry / Monaghan / Cavan"],
+
+  // Major Ferry Ports & Logistics Hubs
+  "dublin port":   ["Dublin Port",                 53.3468, -6.1972, "Dublin Port / East Wall (M50/M1)"],
+  "rosslare":      ["Rosslare Europort",           52.2533, -6.3372, "Co. Wexford Ferry Port (N25/M11)"],
+  "ringaskiddy":   ["Ringaskiddy Port",            51.8325, -8.3214, "Port of Cork (N28)"],
+  "belfast port":  ["Belfast Harbour",             54.6225, -5.8950, "Belfast Port (M2/M3)"],
+  "larne":         ["Larne Port",                  54.8503, -5.8086, "Co. Antrim Ferry Port (A8)"],
+  "warrenpoint":   ["Warrenpoint Port",            54.0989, -6.2564, "Co. Down Port (A2)"],
+  "belview":       ["Belview Port (Waterford)",    52.2635, -7.0185, "Port of Waterford (N29/M9)"],
+  "foynes":        ["Foynes Port",                 52.6114, -9.1086, "Shannon Foynes Port (N69)"],
+  "greenore":      ["Greenore Port",               54.0322, -6.1328, "Co. Louth Port"],
+
+  // Republic of Ireland Cities, Towns & Counties
+  "dublin":        ["Dublin",                      53.3498, -6.2603, "Co. Dublin (M50 Hub)"],
+  "blanchardstown":["Blanchardstown",              53.3881, -6.3756, "Dublin 15 (M50/N3)"],
+  "tallaght":      ["Tallaght",                    53.2878, -6.3734, "Dublin 24 (M50/N81)"],
+  "swords":        ["Swords / Dublin Airport",     53.4597, -6.2181, "North Co. Dublin (M1)"],
+  "naas":          ["Naas",                        53.2158, -6.6669, "Co. Kildare (M7/M9)"],
+  "newbridge":     ["Newbridge",                   53.1819, -6.7967, "Co. Kildare (M7)"],
+  "kildare":       ["Kildare",                     53.1561, -6.9144, "Co. Kildare (M7)"],
+  "maynooth":      ["Maynooth",                    53.3850, -6.5936, "Co. Kildare (M4)"],
+  "wexford":       ["Wexford",                     52.3369, -6.4633, "Co. Wexford (M11/N25)"],
+  "enniscorthy":   ["Enniscorthy",                 52.5008, -6.5578, "Co. Wexford (M11)"],
+  "gorey":         ["Gorey",                       52.6747, -6.2925, "Co. Wexford (M11)"],
+  "new ross":      ["New Ross",                    52.3967, -6.9367, "Co. Wexford (N25)"],
+  "wicklow":       ["Wicklow",                     52.9808, -6.0446, "Co. Wicklow (M11)"],
+  "bray":          ["Bray",                        53.2028, -6.0983, "Co. Wicklow (M11)"],
+  "arklow":        ["Arklow",                      52.7931, -6.1414, "Co. Wicklow (M11)"],
+  "carlow":        ["Carlow",                      52.8408, -6.9261, "Co. Carlow (M9)"],
+  "kilkenny":      ["Kilkenny",                    52.6541, -7.2448, "Co. Kilkenny (M9)"],
+  "waterford":     ["Waterford",                   52.2593, -7.1101, "Co. Waterford (M9/N25)"],
+  "dungarvan":     ["Dungarvan",                   52.0881, -7.6253, "Co. Waterford (N25)"],
+  "cork":          ["Cork",                        51.8985, -8.4756, "Co. Cork (M8/N40)"],
+  "mallow":        ["Mallow",                      52.1333, -8.6333, "Co. Cork (N20)"],
+  "fermoy":        ["Fermoy",                      52.1358, -8.2758, "Co. Cork (M8)"],
+  "midleton":      ["Midleton",                    51.9144, -8.1753, "Co. Cork (N25)"],
+  "limerick":      ["Limerick",                    52.6638, -8.6267, "Co. Limerick (M7/N18)"],
+  "shannon":       ["Shannon",                     52.7139, -8.8672, "Co. Clare (N18)"],
+  "ennis":         ["Ennis",                       52.8436, -8.9864, "Co. Clare (M18)"],
+  "clare":         ["Co. Clare",                   52.8436, -8.9864, "Munster (M18)"],
+  "tralee":        ["Tralee",                      52.2713, -9.6999, "Co. Kerry (N21/N22)"],
+  "killarney":     ["Killarney",                   52.0599, -9.5044, "Co. Kerry (N22)"],
+  "kerry":         ["Co. Kerry",                   52.2713, -9.6999, "Munster"],
+  "clonmel":       ["Clonmel",                     52.3550, -7.7039, "Co. Tipperary (N24)"],
+  "tipperary":     ["Tipperary",                   52.4733, -8.1558, "Co. Tipperary (N24)"],
+  "cashel":        ["Cashel",                      52.5158, -7.8856, "Co. Tipperary (M8)"],
+  "nenagh":        ["Nenagh",                      52.8619, -8.1967, "Co. Tipperary (M7)"],
+  "thurles":       ["Thurles",                     52.6819, -7.8022, "Co. Tipperary (M8)"],
+  "portlaoise":    ["Portlaoise",                  53.0344, -7.2997, "Co. Laois (M7/M8)"],
+  "laois":         ["Co. Laois",                   53.0344, -7.2997, "Midlands (M7/M8)"],
+  "tullamore":     ["Tullamore",                   53.2739, -7.4889, "Co. Offaly (N52)"],
+  "offaly":        ["Co. Offaly",                  53.2739, -7.4889, "Midlands"],
+  "athlone":       ["Athlone",                     53.4239, -7.9407, "Co. Westmeath (M6)"],
+  "mullingar":     ["Mullingar",                   53.5264, -7.3389, "Co. Westmeath (M4)"],
+  "westmeath":     ["Co. Westmeath",               53.5264, -7.3389, "Midlands (M4/M6)"],
+  "longford":      ["Longford",                    53.7275, -7.7931, "Co. Longford (N4)"],
+  "galway":        ["Galway",                      53.2707, -9.0568, "Co. Galway (M6/M17)"],
+  "ballinasloe":   ["Ballinasloe",                 53.3275, -8.2194, "Co. Galway (M6)"],
+  "tuam":          ["Tuam",                        53.5122, -8.8569, "Co. Galway (M17)"],
+  "castlebar":     ["Castlebar",                   53.8589, -9.2986, "Co. Mayo (N5)"],
+  "ballina":       ["Ballina",                     54.1139, -9.1564, "Co. Mayo (N26)"],
+  "mayo":          ["Co. Mayo",                    53.8589, -9.2986, "Connacht"],
+  "roscommon":     ["Roscommon",                   53.6333, -8.1833, "Co. Roscommon (N61)"],
+  "sligo":         ["Sligo",                       54.2766, -8.4761, "Co. Sligo (N4/N15)"],
+  "carrick on shannon": ["Carrick-on-Shannon",     53.9469, -8.0900, "Co. Leitrim (N4)"],
+  "leitrim":       ["Co. Leitrim",                 53.9469, -8.0900, "Connacht"],
+  "letterkenny":   ["Letterkenny",                 54.9558, -7.7342, "Co. Donegal (N13/N14)"],
+  "donegal":       ["Donegal",                     54.6538, -8.1096, "Co. Donegal (N15)"],
+  "buncrana":      ["Buncrana",                    55.1333, -7.4500, "Co. Donegal"],
+  "drogheda":      ["Drogheda",                    53.7179, -6.3561, "Co. Louth (M1)"],
+  "dundalk":       ["Dundalk",                     54.0000, -6.4167, "Co. Louth (M1)"],
+  "louth":         ["Co. Louth",                   53.9500, -6.4000, "North East (M1)"],
+  "navan":         ["Navan",                       53.6528, -6.6814, "Co. Meath (M3)"],
+  "ashbourne":     ["Ashbourne",                   53.5117, -6.3983, "Co. Meath (M2)"],
+  "meath":         ["Co. Meath",                   53.6528, -6.6814, "Leinster (M3)"],
+  "cavan":         ["Cavan",                       53.9908, -7.3606, "Co. Cavan (N3)"],
+  "monaghan":      ["Monaghan",                    54.2492, -6.9683, "Co. Monaghan (N2)"],
+
+  // Northern Ireland Cities, Towns & Counties
+  "belfast":       ["Belfast",                     54.5973, -5.9301, "Co. Antrim / Down (M1/M2)"],
+  "lisburn":       ["Lisburn",                     54.5162, -6.0580, "Co. Antrim (M1)"],
+  "newry":         ["Newry",                       54.1751, -6.3402, "Co. Down / Armagh (A1)"],
+  "derry":         ["Derry / Londonderry",         54.9966, -7.3086, "Co. Derry (A2/A6)"],
+  "londonderry":   ["Derry / Londonderry",         54.9966, -7.3086, "Co. Derry (A2/A6)"],
+  "craigavon":     ["Craigavon",                   54.4471, -6.3870, "Co. Armagh (M1)"],
+  "portadown":     ["Portadown",                   54.4242, -6.4475, "Co. Armagh (M1)"],
+  "lurgan":        ["Lurgan",                      54.4644, -6.3333, "Co. Armagh (M1)"],
+  "armagh":        ["Armagh",                      54.3503, -6.6528, "Co. Armagh"],
+  "bangor":        ["Bangor (NI)",                 54.6536, -5.6689, "Co. Down (A2)"],
+  "newtownards":   ["Newtownards",                 54.5919, -5.6914, "Co. Down"],
+  "downpatrick":   ["Downpatrick",                 54.3281, -5.7153, "Co. Down"],
+  "banbridge":     ["Banbridge",                   54.3489, -6.2703, "Co. Down (A1)"],
+  "antrim":        ["Antrim",                      54.7195, -6.2072, "Co. Antrim (M2)"],
+  "ballymena":     ["Ballymena",                   54.8639, -6.2764, "Co. Antrim (M2)"],
+  "newtownabbey":  ["Newtownabbey",                54.6575, -5.9072, "Co. Antrim (M2)"],
+  "carrickfergus": ["Carrickfergus",               54.7158, -5.8058, "Co. Antrim (A2)"],
+  "coleraine":     ["Coleraine",                   55.1326, -6.6681, "Co. Derry (A26)"],
+  "magherafelt":   ["Magherafelt",                 54.7556, -6.6075, "Co. Derry"],
+  "omagh":         ["Omagh",                       54.6000, -7.3000, "Co. Tyrone (A5)"],
+  "dungannon":     ["Dungannon",                   54.5033, -6.7672, "Co. Tyrone (M1)"],
+  "cookstown":     ["Cookstown",                   54.6431, -6.7453, "Co. Tyrone"],
+  "strabane":      ["Strabane",                    54.8236, -7.4692, "Co. Tyrone (A5)"],
+  "tyrone":        ["Co. Tyrone",                  54.6000, -7.1500, "Northern Ireland"],
+  "enniskillen":   ["Enniskillen",                 54.3447, -7.6319, "Co. Fermanagh (A4)"],
+  "fermanagh":     ["Co. Fermanagh",               54.3447, -7.6319, "Northern Ireland"]
+};
+
+// Complete 139 Eircode Routing Keys (3-Character Instant Fallback Lookup)
+var EIRCODE_KEYS = {
+  "a41":["Ballyboughal (A41)",53.5208,-6.2664,"Co. Dublin"],
+  "a42":["Garristown (A42)",53.5681,-6.3853,"Co. Dublin"],
+  "a45":["Oldtown (A45)",53.5244,-6.3156,"Co. Dublin"],
+  "a63":["Greystones (A63)",53.1408,-6.0631,"Co. Wicklow"],
+  "a67":["Wicklow (A67)",52.9808,-6.0446,"Co. Wicklow"],
+  "a75":["Castleblayney (A75)",54.1167,-6.7333,"Co. Monaghan"],
+  "a81":["Carrickmacross (A81)",53.9728,-6.7189,"Co. Monaghan"],
+  "a82":["Kells (A82)",53.7264,-6.8792,"Co. Meath"],
+  "a83":["Enfield (A83)",53.4142,-6.8325,"Co. Meath"],
+  "a84":["Ashbourne (A84)",53.5117,-6.3983,"Co. Meath"],
+  "a85":["Dunshaughlin (A85)",53.5125,-6.5400,"Co. Meath"],
+  "a86":["Dunboyne (A86)",53.4186,-6.4736,"Co. Meath"],
+  "a91":["Dundalk (A91)",54.0000,-6.4167,"Co. Louth"],
+  "a92":["Drogheda (A92)",53.7179,-6.3561,"Co. Louth"],
+  "a94":["Blackrock (A94)",53.3015,-6.1778,"Co. Dublin"],
+  "a96":["Glenageary / Dun Laoghaire (A96)",53.2850,-6.1350,"Co. Dublin"],
+  "a98":["Bray (A98)",53.2028,-6.0983,"Co. Wicklow"],
+  "c15":["Navan (C15)",53.6528,-6.6814,"Co. Meath"],
+  "d01":["Dublin 1 (D01)",53.3520,-6.2560,"Dublin North Inner"],
+  "d02":["Dublin 2 (D02)",53.3382,-6.2591,"Dublin South Inner"],
+  "d03":["Dublin 3 (D03)",53.3635,-6.2150,"Dublin Clontarf / East Wall"],
+  "d04":["Dublin 4 (D04)",53.3280,-6.2290,"Dublin Ballsbridge / Ringsend"],
+  "d05":["Dublin 5 (D05)",53.3820,-6.1850,"Dublin Raheny / Artane"],
+  "d06":["Dublin 6 (D06)",53.3180,-6.2680,"Dublin Rathmines / Ranelagh"],
+  "d6w":["Dublin 6W (D6W)",53.3080,-6.3050,"Dublin Templeogue / Terenure"],
+  "d07":["Dublin 7 (D07)",53.3560,-6.2880,"Dublin Phibsborough / Cabra"],
+  "d08":["Dublin 8 (D08)",53.3380,-6.2920,"Dublin Inchicore / Liberties"],
+  "d09":["Dublin 9 (D09)",53.3850,-6.2480,"Dublin Drumcondra / Santry"],
+  "d10":["Dublin 10 (D10)",53.3430,-6.3550,"Dublin Ballyfermot"],
+  "d11":["Dublin 11 (D11)",53.3950,-6.2980,"Dublin Finglas / Ballymun"],
+  "d12":["Dublin 12 (D12)",53.3190,-6.3320,"Dublin Crumlin / Walkinstown"],
+  "d13":["Dublin 13 (D13)",53.3980,-6.1450,"Dublin Baldoyle / Howth"],
+  "d14":["Dublin 14 (D14)",53.2920,-6.2450,"Dublin Dundrum / Churchtown"],
+  "d15":["Dublin 15 (D15)",53.3881,-6.3756,"Dublin Blanchardstown"],
+  "d16":["Dublin 16 (D16)",53.2750,-6.2750,"Dublin Ballinteer / Knocklyon"],
+  "d17":["Dublin 17 (D17)",53.4020,-6.1950,"Dublin Coolock / Darndale"],
+  "d18":["Dublin 18 (D18)",53.2550,-6.1850,"Dublin Sandyford / Foxrock"],
+  "d20":["Dublin 20 (D20)",53.3520,-6.3720,"Dublin Palmerstown / Chapelizod"],
+  "d22":["Dublin 22 (D22)",53.3230,-6.3950,"Dublin Clondalkin"],
+  "d24":["Dublin 24 (D24)",53.2878,-6.3734,"Dublin Tallaght / Citywest"],
+  "e21":["Cahir (E21)",52.3761,-7.9217,"Co. Tipperary"],
+  "e25":["Cashel (E25)",52.5158,-7.8856,"Co. Tipperary"],
+  "e32":["Carrick-on-Suir (E32)",52.3469,-7.4131,"Co. Tipperary"],
+  "e34":["Tipperary Town (E34)",52.4733,-8.1558,"Co. Tipperary"],
+  "e41":["Thurles (E41)",52.6819,-7.8022,"Co. Tipperary"],
+  "e45":["Nenagh (E45)",52.8619,-8.1967,"Co. Tipperary"],
+  "e53":["Roscrea (E53)",52.9550,-7.7983,"Co. Tipperary"],
+  "e91":["Clonmel (E91)",52.3550,-7.7039,"Co. Tipperary"],
+  "f12":["Claremorris (F12)",53.7208,-8.9986,"Co. Mayo"],
+  "f23":["Castlebar (F23)",53.8589,-9.2986,"Co. Mayo"],
+  "f26":["Ballina (F26)",54.1139,-9.1564,"Co. Mayo"],
+  "f28":["Westport (F28)",53.8000,-9.5167,"Co. Mayo"],
+  "f31":["Ballinrobe (F31)",53.6264,-9.2250,"Co. Mayo"],
+  "f35":["Ballyhaunis (F35)",53.7667,-8.7667,"Co. Mayo"],
+  "f42":["Roscommon (F42)",53.6333,-8.1833,"Co. Roscommon"],
+  "f45":["Castlerea (F45)",53.7667,-8.4917,"Co. Roscommon"],
+  "f52":["Boyle (F52)",53.9722,-8.3000,"Co. Roscommon"],
+  "f56":["Ballymote (F56)",54.0889,-8.5194,"Co. Sligo"],
+  "f91":["Sligo (F91)",54.2766,-8.4761,"Co. Sligo"],
+  "f92":["Letterkenny (F92)",54.9558,-7.7342,"Co. Donegal"],
+  "f93":["Lifford / Inishowen (F93)",54.8333,-7.4833,"Co. Donegal"],
+  "f94":["Donegal Town (F94)",54.6538,-8.1096,"Co. Donegal"],
+  "h12":["Cavan (H12)",53.9908,-7.3606,"Co. Cavan"],
+  "h14":["Belturbet (H14)",54.1000,-7.4500,"Co. Cavan"],
+  "h16":["Cootehill (H16)",54.0722,-7.0819,"Co. Cavan"],
+  "h18":["Monaghan (H18)",54.2492,-6.9683,"Co. Monaghan"],
+  "h23":["Clones (H23)",54.1833,-7.2333,"Co. Monaghan"],
+  "h53":["Ballinasloe (H53)",53.3275,-8.2194,"Co. Galway"],
+  "h54":["Tuam (H54)",53.5122,-8.8569,"Co. Galway"],
+  "h62":["Loughrea (H62)",53.1969,-8.5669,"Co. Galway"],
+  "h65":["Athenry (H65)",53.2986,-8.7458,"Co. Galway"],
+  "h71":["Clifden (H71)",53.4892,-10.0194,"Co. Galway"],
+  "h91":["Galway (H91)",53.2707,-9.0568,"Co. Galway"],
+  "k32":["Balbriggan (K32)",53.6108,-6.1819,"Co. Dublin"],
+  "k34":["Skerries (K34)",53.5828,-6.1083,"Co. Dublin"],
+  "k36":["Malahide (K36)",53.4508,-6.1544,"Co. Dublin"],
+  "k45":["Lusk (K45)",53.5256,-6.1669,"Co. Dublin"],
+  "k56":["Rush (K56)",53.5219,-6.0914,"Co. Dublin"],
+  "k67":["Swords (K67)",53.4597,-6.2181,"Co. Dublin"],
+  "k78":["Lucan (K78)",53.3572,-6.4486,"Co. Dublin"],
+  "n37":["Athlone (N37)",53.4239,-7.9407,"Co. Westmeath"],
+  "n39":["Longford (N39)",53.7275,-7.7931,"Co. Longford"],
+  "n41":["Carrick-on-Shannon (N41)",53.9469,-8.0900,"Co. Leitrim"],
+  "n91":["Mullingar (N91)",53.5264,-7.3389,"Co. Westmeath"],
+  "p12":["Macroom (P12)",51.9069,-8.9569,"Co. Cork"],
+  "p14":["Crookstown (P14)",51.8389,-8.8361,"Co. Cork"],
+  "p17":["Kinsale (P17)",51.7075,-8.5306,"Co. Cork"],
+  "p24":["Cobh (P24)",51.8503,-8.2944,"Co. Cork"],
+  "p25":["Midleton (P25)",51.9144,-8.1753,"Co. Cork"],
+  "p31":["Ballincollig (P31)",51.8878,-8.5858,"Co. Cork"],
+  "p36":["Youghal (P36)",51.9500,-7.8500,"Co. Cork"],
+  "p43":["Carrigaline (P43)",51.8117,-8.3986,"Co. Cork"],
+  "p47":["Dunmanway (P47)",51.7214,-9.1125,"Co. Cork"],
+  "p51":["Mallow (P51)",52.1333,-8.6333,"Co. Cork"],
+  "p56":["Charleville (P56)",52.3544,-8.6836,"Co. Cork"],
+  "p61":["Fermoy (P61)",52.1358,-8.2758,"Co. Cork"],
+  "p67":["Mitchelstown (P67)",52.2658,-8.2681,"Co. Cork"],
+  "p72":["Bandon (P72)",51.7469,-8.7425,"Co. Cork"],
+  "p75":["Bantry (P75)",51.6806,-9.4528,"Co. Cork"],
+  "p81":["Skibbereen (P81)",51.5500,-9.2667,"Co. Cork"],
+  "p85":["Clonakilty (P85)",51.6231,-8.8706,"Co. Cork"],
+  "r14":["Athy (R14)",52.9914,-6.9803,"Co. Kildare"],
+  "r21":["Bagenalstown (R21)",52.7014,-6.9597,"Co. Carlow"],
+  "r32":["Portlaoise (R32)",53.0344,-7.2997,"Co. Laois"],
+  "r35":["Tullamore (R35)",53.2739,-7.4889,"Co. Offaly"],
+  "r42":["Birr (R42)",53.0958,-7.9133,"Co. Offaly"],
+  "r45":["Edenderry (R45)",53.3436,-7.0486,"Co. Offaly"],
+  "r51":["Kildare Town (R51)",53.1561,-6.9144,"Co. Kildare"],
+  "r56":["Curragh (R56)",53.1514,-6.8350,"Co. Kildare"],
+  "r93":["Carlow (R93)",52.8408,-6.9261,"Co. Carlow"],
+  "r95":["Kilkenny (R95)",52.6541,-7.2448,"Co. Kilkenny"],
+  "t12":["Cork South (T12)",51.8850,-8.4750,"Co. Cork"],
+  "t23":["Cork North (T23)",51.9120,-8.4750,"Co. Cork"],
+  "t34":["Whitechurch (T34)",51.9750,-8.5250,"Co. Cork"],
+  "t45":["Glanmire / Little Island (T45)",51.9150,-8.3850,"Co. Cork"],
+  "t56":["Watergrasshill (T56)",52.0117,-8.3444,"Co. Cork"],
+  "v14":["Shannon (V14)",52.7139,-8.8672,"Co. Clare"],
+  "v15":["Kilrush (V15)",52.6397,-9.4833,"Co. Clare"],
+  "v23":["Cahersiveen (V23)",51.9486,-10.2236,"Co. Kerry"],
+  "v31":["Listowel (V31)",52.4464,-9.4853,"Co. Kerry"],
+  "v35":["Kilmallock (V35)",52.4000,-8.5772,"Co. Limerick"],
+  "v42":["Newcastle West (V42)",52.4492,-9.0611,"Co. Limerick"],
+  "v92":["Tralee (V92)",52.2713,-9.6999,"Co. Kerry"],
+  "v93":["Killarney (V93)",52.0599,-9.5044,"Co. Kerry"],
+  "v94":["Limerick (V94)",52.6638,-8.6267,"Co. Limerick"],
+  "v95":["Ennis (V95)",52.8436,-8.9864,"Co. Clare"],
+  "w12":["Newbridge (W12)",53.1819,-6.7967,"Co. Kildare"],
+  "w23":["Celbridge / Leixlip / Maynooth (W23)",53.3550,-6.5450,"Co. Kildare"],
+  "w34":["Monasterevin (W34)",53.1408,-7.0664,"Co. Kildare"],
+  "w91":["Naas (W91)",53.2158,-6.6669,"Co. Kildare"],
+  "x35":["Dungarvan (X35)",52.0881,-7.6253,"Co. Waterford"],
+  "x42":["Kilmacthomas (X42)",52.2056,-7.4250,"Co. Waterford"],
+  "x91":["Waterford (X91)",52.2593,-7.1101,"Co. Waterford"],
+  "y14":["Arklow (Y14)",52.7931,-6.1414,"Co. Wicklow"],
+  "y21":["Enniscorthy (Y21)",52.5008,-6.5578,"Co. Wexford"],
+  "y25":["Gorey (Y25)",52.6747,-6.2925,"Co. Wexford"],
+  "y34":["New Ross (Y34)",52.3967,-6.9367,"Co. Wexford"],
+  "y35":["Wexford / Rosslare (Y35)",52.3369,-6.4633,"Co. Wexford"]
+};
+
+var CACHE = {}, BUSY = {}, MISS = {}, timer = null, pushTimer = null, isTyping = false, lastSnapshot = "", chatMessages = [], loadStatuses = {};
+try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v19") || "{}"); } catch (e) {}
+
+function miles(a, b) {
+  var dLat = (b.lat - a.lat) * 0.0174533, dLon = (b.lon - a.lon) * 0.0174533;
+  var s1 = Math.sin(dLat / 2), s2 = Math.sin(dLon / 2);
+  var h = s1 * s1 + Math.cos(a.lat * 0.0174533) * Math.cos(b.lat * 0.0174533) * s2 * s2;
+  return Math.round(3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)) * 1.22);
+}
+function isNum(s) {
+  if (!s) return false;
+  for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) < 48 || s.charCodeAt(i) > 57) return false;
+  return true;
+}
+function words(str) {
+  var out = "", res = [];
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    out += ((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || str.charAt(i) === ":") ? str.charAt(i).toLowerCase() : " ";
+  }
+  var p = out.split(" ");
+  for (var j = 0; j < p.length; j++) if (p[j]) res.push(p[j]);
+  return res;
+}
+
+function nowStamp() {
+  var d = new Date(), hh = ("0" + d.getHours()).slice(-2), mm = ("0" + d.getMinutes()).slice(-2), ss = ("0" + d.getSeconds()).slice(-2);
+  return hh + ":" + mm + ":" + ss;
+}
+
+function shortTime() {
+  var d = new Date(), hh = ("0" + d.getHours()).slice(-2), mm = ("0" + d.getMinutes()).slice(-2);
+  return hh + ":" + mm;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function toggleLoadStatus(loadName, targetState) {
+  if (loadStatuses[loadName] === targetState) {
+    delete loadStatuses[loadName];
+  } else {
+    loadStatuses[loadName] = targetState;
+  }
+  run();
+  pushToCloud();
+}
+
+function clearLoadsOnly() {
+  document.getElementById("loads").value = "";
+  loadStatuses = {};
+  onUserEdit();
+}
+
+function clearAllBoard() {
+  document.getElementById("avail").value = "";
+  document.getElementById("loads").value = "";
+  loadStatuses = {};
+  onUserEdit();
+}
+
+function renderChat() {
+  var feed = document.getElementById("chat-feed");
+  if (!feed) return;
+  if (!chatMessages || chatMessages.length === 0) {
+    feed.innerHTML = '<div class="chat-empty">No messages yet. Post a quick note for the crew below.</div>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < chatMessages.length; i++) {
+    var m = chatMessages[i];
+    html += '<div class="chat-item"><div class="chat-meta">' + escHtml(m.who || "Crew") + '<span>' + escHtml(m.at || "") + '</span></div><div class="chat-text">' + escHtml(m.txt || "") + '</div></div>';
+  }
+  feed.innerHTML = html;
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function sendMessage() {
+  var inp = document.getElementById("chat-input");
+  var txt = inp.value.trim();
+  if (!txt) return;
+  var who = document.getElementById("chat-name").value.trim() || "Crew";
+  saveName();
+  inp.value = "";
+  chatMessages.push({ who: who, txt: txt, at: shortTime() });
+  if (chatMessages.length > 25) chatMessages = chatMessages.slice(chatMessages.length - 25);
+  renderChat();
+  pushToCloud();
+}
+
+function clearChat() {
+  chatMessages = [];
+  renderChat();
+  pushToCloud();
+}
+
+function setSyncState(text, cls, info) {
+  var st = document.getElementById("status");
+  if (st) { st.textContent = text; st.className = "pill" + (cls ? " " + cls : ""); }
+  if (info) document.getElementById("sync-info").textContent = info;
+  document.getElementById("last-time").textContent = nowStamp();
+}
+
+function onUserEdit() {
+  isTyping = true;
+  run();
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(function() {
+    isTyping = false;
+    pushToCloud();
+  }, 600);
+}
+
+function pushToCloud() {
+  if (!DB_URL || DB_URL.indexOf("http") !== 0) {
+    setSyncState("LOCAL ONLY", "busy", "Add Firebase URL to enable crew sync");
+    return;
+  }
+  setSyncState("SAVING...", "busy", "Sending update to crew...");
+  var aVal = document.getElementById("avail").value;
+  var lVal = document.getElementById("loads").value;
+  lastSnapshot = aVal + "|||" + lVal + "|||" + JSON.stringify(loadStatuses) + "|||" + JSON.stringify(chatMessages);
+
+  fetch(DB_URL + "/ireland-board.json", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ avail: aVal, loads: lVal, statuses: loadStatuses, chat: chatMessages, updated: Date.now() })
+  }).then(function(r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    setSyncState("CREW LIVE", "", "Saved & shared with Irish crew");
+  }).catch(function(e) {
+    setSyncState("SYNC ERR", "err", "Check Firebase Rules (" + e.message + ")");
+  });
+}
+
+function pullFromCloud() {
+  if (!DB_URL || DB_URL.indexOf("http") !== 0 || isTyping) return;
+  fetch(DB_URL + "/ireland-board.json?t=" + Date.now())
+    .then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      if (!data) {
+        setSyncState("CREW LIVE", "", "Connected (Ireland board empty)");
+        return;
+      }
+      var remoteA = data.avail || "";
+      var remoteL = data.loads || "";
+      var remoteSt = (data.statuses && typeof data.statuses === "object") ? data.statuses : {};
+      var remoteChat = Array.isArray(data.chat) ? data.chat : [];
+      var snap = remoteA + "|||" + remoteL + "|||" + JSON.stringify(remoteSt) + "|||" + JSON.stringify(remoteChat);
+      if (snap !== lastSnapshot) {
+        lastSnapshot = snap;
+        document.getElementById("avail").value = remoteA;
+        document.getElementById("loads").value = remoteL;
+        loadStatuses = remoteSt;
+        chatMessages = remoteChat;
+        run();
+        renderChat();
+        setSyncState("CREW LIVE", "", "Updated from crew at " + nowStamp());
+      } else {
+        setSyncState("CREW LIVE", "", "Live All-Ireland sync active");
+      }
+    })
+    .catch(function(e) {
+      setSyncState("SYNC ERR", "err", "Connection error (" + e.message + ")");
+    });
+}
+
+// Helper to detect Eircode routing key (e.g. "y35", "d01", "d6w", or full "y35w821")
+function getEircodeInfo(w) {
+  if (w.length === 1 && w[0].length === 3 && EIRCODE_KEYS[w[0]]) {
+    return { key: w[0], full: "" };
+  }
+  if (w.length === 1 && w[0].length === 7 && EIRCODE_KEYS[w[0].slice(0, 3)]) {
+    return { key: w[0].slice(0, 3), full: (w[0].slice(0, 3) + " " + w[0].slice(3)).toUpperCase() };
+  }
+  if (w.length === 2 && w[0].length === 3 && w[1].length === 4 && EIRCODE_KEYS[w[0]]) {
+    return { key: w[0], full: (w[0] + " " + w[1]).toUpperCase() };
+  }
+  return null;
+}
+
+// Dual Geocoding: Northern Ireland BT Postcodes via postcodes.io | ROI Eircodes & Towns via Nominatim + Eircode Fallback
+function lookup(q) {
+  if (!q || BUSY[q] || MISS[q] || CACHE[q]) return;
+  BUSY[q] = true;
+  var w = words(q);
+
+  // 1. Check Northern Ireland BT Postcode (Full e.g. "BT1 5GS" / "BT15GS" or Outcode e.g. "BT36")
+  var joined = w.join("");
+  var isBtFull = (joined.indexOf("bt") === 0 && joined.length >= 6 && joined.length <= 7 && isNum(joined.charAt(2)));
+  var isBtOut  = (w.length === 1 && w[0].indexOf("bt") === 0 && w[0].length >= 3 && w[0].length <= 4 && isNum(w[0].charAt(2)));
+
+  // 2. Check Republic of Ireland Eircode
+  var eir = getEircodeInfo(w);
+
+  // Instant resolve for 3-character Eircode Routing Key (e.g., "Y35", "D15")
+  if (eir && !eir.full) {
+    delete BUSY[q];
+    CACHE[q] = EIRCODE_KEYS[eir.key];
+    try { localStorage.setItem("ie_geo_v19", JSON.stringify(CACHE)); } catch (e) {}
+    run();
+    return;
+  }
+
+  var url = isBtFull ? ("https://api.postcodes.io/postcodes/" + encodeURIComponent(joined))
+          : isBtOut  ? ("https://api.postcodes.io/outcodes/" + encodeURIComponent(w[0]))
+          : eir      ? ("https://nominatim.openstreetmap.org/search?format=json&countrycodes=ie&limit=1&q=" + encodeURIComponent(eir.full + ", Ireland"))
+          : ("https://nominatim.openstreetmap.org/search?format=json&countrycodes=ie,gb&limit=1&q=" + encodeURIComponent(q + ", Ireland"));
+
+  fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+    delete BUSY[q];
+    if ((isBtFull || isBtOut) && d && d.status === 200 && d.result) {
+      CACHE[q] = [d.result.postcode || d.result.outcode, d.result.latitude, d.result.longitude, d.result.admin_district || "Northern Ireland (BT)"];
+    } else if (!isBtFull && !isBtOut && d && d.length > 0) {
+      var label = eir ? (eir.full + " (" + d[0].display_name.split(",")[0] + ")") : d[0].display_name.split(",")[0];
+      CACHE[q] = [label, parseFloat(d[0].lat), parseFloat(d[0].lon), eir ? "Eircode Location" : "Ireland Location"];
+    } else if (eir && EIRCODE_KEYS[eir.key]) {
+      // Fallback to exact 3-character Eircode Routing Key area if Nominatim lacks the individual rural house code
+      var base = EIRCODE_KEYS[eir.key];
+      CACHE[q] = [eir.full + " — " + base[0], base[1], base[2], base[3]];
+    } else {
+      MISS[q] = true;
+    }
+    try { localStorage.setItem("ie_geo_v19", JSON.stringify(CACHE)); } catch (e) {}
+    run();
+  }).catch(function() {
+    delete BUSY[q];
+    if (eir && EIRCODE_KEYS[eir.key]) {
+      var base = EIRCODE_KEYS[eir.key];
+      CACHE[q] = [eir.full + " — " + base[0], base[1], base[2], base[3]];
+    } else {
+      MISS[q] = true;
+    }
+    run();
+  });
+}
+
+function parse(text, missList, pendList) {
+  var lf = String.fromCharCode(10), cr = String.fromCharCode(13);
+  var lines = text.split(cr).join(lf).split(lf), out = [];
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var tok = words(line), pad = " " + tok.join(" ") + " ";
+    var times = [], night = pad.indexOf(" night ") !== -1, haz = pad.indexOf(" haz ") !== -1 || pad.indexOf(" adr ") !== -1;
+    var cnt = 1, rem = [];
+    for (var t = 0; t < tok.length; t++) {
+      var w = tok[t], used = false;
+      if (w.charAt(w.length - 1) === "x" && isNum(w.slice(0, -1))) { cnt = parseInt(w.slice(0, -1), 10); used = true; }
+      else if (w.charAt(0) === "x" && isNum(w.slice(1))) { cnt = parseInt(w.slice(1), 10); used = true; }
+      else if (w === "x" && t > 0 && isNum(tok[t - 1])) { cnt = parseInt(tok[t - 1], 10); used = true; }
+      else if (w === "x" && t + 1 < tok.length && isNum(tok[t + 1])) { cnt = parseInt(tok[t + 1], 10); used = true; }
+      else if (isNum(w) && ((t + 1 < tok.length && tok[t + 1] === "x") || (t > 0 && tok[t - 1] === "x"))) { used = true; }
+      else if (w.indexOf(":") !== -1 && w.length >= 4) { times.push(w); used = true; }
+      else if (isNum(w) && w.length === 4) { times.push(w.slice(0, 2) + ":" + w.slice(2)); used = true; }
+      else if (w === "haz" || w === "adr" || w === "night" || w === "drivers" || w === "driver" || w === "in" || w === "load" || w === "co" || w === "county") { used = true; }
+      if (!used) rem.push(w);
+    }
+    if (cnt === 1 && times.length > 1) cnt = times.length;
+    var found = null;
+    for (var k in HUBS) {
+      if (pad.indexOf(" " + k + " ") !== -1 || pad.indexOf(" " + k + "s ") !== -1) { found = HUBS[k]; break; }
+    }
+    var q = rem.join(" ").trim();
+    if (!found && q && CACHE[q]) found = CACHE[q];
+    if (found) {
+      out.push({ name: found[0], lat: found[1], lon: found[2], reg: found[3], cnt: cnt, times: times, night: night, haz: haz });
+    } else if (q.length >= 2 && !isNum(q)) {
+      if (MISS[q]) missList.push(line); else pendList.push(q);
+    }
+  }
+  return out;
+}
+
+function merge(arr) {
+  var m = {}, res = [];
+  for (var i = 0; i < arr.length; i++) {
+    var x = arr[i];
+    if (!m[x.name]) { m[x.name] = { name: x.name, lat: x.lat, lon: x.lon, reg: x.reg, cnt: x.cnt, times: x.times.slice(), night: x.night, haz: x.haz }; }
+    else {
+      m[x.name].cnt += x.cnt;
+      if (x.night) m[x.name].night = true;
+      if (x.haz) m[x.name].haz = true;
+      for (var t = 0; t < x.times.length; t++) if (m[x.name].times.indexOf(x.times[t]) === -1) m[x.name].times.push(x.times[t]);
+    }
+  }
+  for (var k in m) res.push(m[k]);
+  return res;
+}
+
+function showTip(e, html, borderCol) {
+  var tip = document.getElementById("tooltip");
+  var wrap = document.getElementById("map-wrap").getBoundingClientRect();
+  tip.style.display = "block";
+  tip.style.borderColor = borderCol;
+  tip.style.left = (e.clientX - wrap.left + 16) + "px";
+  tip.style.top = (e.clientY - wrap.top - 12) + "px";
+  tip.innerHTML = html;
+}
+
+function hideTip() {
+  document.getElementById("tooltip").style.display = "none";
+}
+
+function run() {
+  var miss = [], pend = [];
+  var hubs = merge(parse(document.getElementById("avail").value, miss, pend));
+  hubs.sort(function(a, b) { return b.cnt - a.cnt; });
+
+  var lf = String.fromCharCode(10), cr = String.fromCharCode(13);
+  var rawL = document.getElementById("loads").value.split(cr).join(lf).split(",").join(lf).split(lf);
+  var lArr = [];
+  for (var i = 0; i < rawL.length; i++) if (rawL[i].trim()) lArr = lArr.concat(parse(rawL[i], miss, pend));
+  var loads = merge(lArr);
+
+  var pins = document.getElementById("pins"), lines = document.getElementById("lines");
+  var hList = document.getElementById("list-hubs"), lList = document.getElementById("list-loads");
+  var ns = "http://www.w3.org/2000/svg";
+  pins.innerHTML = ""; lines.innerHTML = ""; hList.innerHTML = ""; lList.innerHTML = "";
+
+  var uTot = 0, lTot = 0;
+  for (var a = 0; a < hubs.length; a++) uTot += hubs[a].cnt;
+  for (var b = 0; b < loads.length; b++) lTot += loads[b].cnt;
+  document.getElementById("s-units").textContent = uTot;
+  document.getElementById("s-hubs").textContent = hubs.length;
+  document.getElementById("s-loads").textContent = lTot;
+
+  for (var h = 0; h < hubs.length; h++) {
+    (function(hub) {
+      var p = pt(hub.lat, hub.lon);
+      var r = Math.min(13.5, 7 + hub.cnt * 1.3);
+      var col = hub.night ? "#a855f7" : (hub.times.length ? "#f59e0b" : "#38bdf8");
+
+      var pg = document.createElementNS(ns, "g");
+      pg.setAttribute("class", "pin-node");
+      pg.setAttribute("data-x", p.x.toFixed(2));
+      pg.setAttribute("data-y", p.y.toFixed(2));
+      pg.setAttribute("filter", "url(#pinShadow)");
+
+      var halo = document.createElementNS(ns, "circle");
+      halo.setAttribute("cx", "0"); halo.setAttribute("cy", "0"); halo.setAttribute("r", r + 4);
+      halo.setAttribute("fill", hub.haz ? "#ef4444" : col); halo.setAttribute("opacity", hub.haz ? "0.35" : "0.24");
+      pg.appendChild(halo);
+
+      var c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", "0"); c.setAttribute("cy", "0"); c.setAttribute("r", r);
+      c.setAttribute("fill", col);
+      c.setAttribute("stroke", hub.haz ? "#ef4444" : "#090f1d");
+      c.setAttribute("stroke-width", hub.haz ? "2.4" : "1.8");
+      pg.appendChild(c);
+
+      var tx = document.createElementNS(ns, "text");
+      tx.setAttribute("x", "0"); tx.setAttribute("y", "0"); tx.setAttribute("class", "cnt"); tx.textContent = hub.cnt;
+      pg.appendChild(tx);
+
+      var hazSuffix = hub.haz ? " [HAZ]" : "";
+      var timeSuffix = hub.times.length ? " (" + hub.times.join(", ") + ")" : (hub.night ? " (Night)" : "");
+      var labelStr = hub.name + hazSuffix + timeSuffix;
+      var pillW = labelStr.length * 6.2 + 10;
+
+      var rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", r + 5); rect.setAttribute("y", "-8");
+      rect.setAttribute("width", pillW); rect.setAttribute("height", "16");
+      rect.setAttribute("class", hub.haz ? "lbl-bg h" : "lbl-bg");
+      pg.appendChild(rect);
+
+      var lb = document.createElementNS(ns, "text");
+      lb.setAttribute("x", r + 10); lb.setAttribute("y", "3.5");
+      lb.setAttribute("class", hub.haz ? "lbl h" : "lbl");
+      lb.textContent = labelStr;
+      pg.appendChild(lb);
+
+      pg.onmousemove = function(e) {
+        showTip(e,
+          '<strong style="color:' + (hub.haz ? "#fca5a5" : col) + ';">' + hub.name + ' &mdash; ' + hub.cnt + ' Available' + (hub.haz ? ' (&#9763; ADR/HAZ)' : '') + '</strong>' +
+          '<div style="color:#94a3b8;margin-top:2px;">' + hub.reg + '</div>' +
+          (hub.times.length ? '<div style="color:#fbbf24;margin-top:3px;">Waves: ' + hub.times.join(", ") + '</div>' : ''),
+          hub.haz ? "#ef4444" : col
+        );
+      };
+      pg.onmouseleave = hideTip;
+
+      pins.appendChild(pg);
+
+      var card = document.createElement("div");
+      card.className = hub.haz ? "card hz" : "card";
+      var cls = hub.night ? "tag n" : (hub.times.length ? "tag t" : "tag");
+      var hazPill = hub.haz ? '<span class="tag h">&#9763; HAZ</span>' : '';
+      card.innerHTML = '<div><div class="card-title">' + hub.name + hazPill + '</div><div class="card-sub">' + (hub.times.length ? "Waves: " + hub.times.join(", ") : hub.reg) + '</div></div><span class="' + cls + '">' + hub.cnt + 'x</span>';
+      hList.appendChild(card);
+    })(hubs[h]);
+  }
+
+  document.getElementById("hdr-loads").style.display = loads.length ? "flex" : "none";
+  for (var l = 0; l < loads.length; l++) {
+    (function(ld) {
+      var st = loadStatuses[ld.name] || "";
+      var isNo = (st === "no");
+      var isOk = (st === "ok");
+
+      var lp = pt(ld.lat, ld.lon);
+      var col = isNo ? "#ef4444" : (ld.haz ? "#ef4444" : "#10b981");
+
+      var near = [];
+      for (var k = 0; k < hubs.length; k++) {
+        if (ld.haz && !hubs[k].haz) continue;
+        near.push({ name: hubs[k].name, cnt: hubs[k].cnt, lat: hubs[k].lat, lon: hubs[k].lon, haz: hubs[k].haz, mi: miles(ld, hubs[k]) });
+      }
+      if (ld.haz && near.length === 0) {
+        for (var k2 = 0; k2 < hubs.length; k2++) {
+          near.push({ name: hubs[k2].name, cnt: hubs[k2].cnt, lat: hubs[k2].lat, lon: hubs[k2].lon, haz: false, mi: miles(ld, hubs[k2]) });
+        }
+      }
+      near.sort(function(x, y) { return x.mi - y.mi; });
+      near = near.slice(0, 3);
+
+      for (var m = 0; m < near.length; m++) {
+        var hp = pt(near[m].lat, near[m].lon), ln = document.createElementNS(ns, "line");
+        var baseW = m === 0 ? "2.1" : "1.1";
+        ln.setAttribute("class", "conn-line");
+        ln.setAttribute("data-w", baseW);
+        ln.setAttribute("x1", lp.x); ln.setAttribute("y1", lp.y); ln.setAttribute("x2", hp.x); ln.setAttribute("y2", hp.y);
+        ln.setAttribute("stroke", col);
+        ln.setAttribute("stroke-width", baseW);
+        if (!isOk) ln.setAttribute("stroke-dasharray", "4 3");
+        ln.setAttribute("opacity", isNo ? "0.22" : (m === 0 ? "0.92" : "0.4"));
+        lines.appendChild(ln);
+      }
+
+      var lg = document.createElementNS(ns, "g");
+      lg.setAttribute("class", "pin-node");
+      lg.setAttribute("data-x", lp.x.toFixed(2));
+      lg.setAttribute("data-y", lp.y.toFixed(2));
+      lg.setAttribute("filter", "url(#pinShadow)");
+      if (isNo) lg.setAttribute("opacity", "0.65");
+
+      var sz = ld.haz ? 11 : 9.5, poly = document.createElementNS(ns, "polygon");
+      poly.setAttribute("points", "0," + (-sz) + " " + sz + ",0 0," + sz + " " + (-sz) + ",0");
+      poly.setAttribute("fill", col);
+      poly.setAttribute("stroke", isOk ? "#34d399" : (ld.haz ? "#fbbf24" : "#ffffff"));
+      poly.setAttribute("stroke-width", isOk ? "2.4" : "1.8");
+      lg.appendChild(poly);
+
+      var ltx = document.createElementNS(ns, "text");
+      ltx.setAttribute("x", "0"); ltx.setAttribute("y", "0"); ltx.setAttribute("class", "cnt");
+      if (ld.haz || isNo) ltx.setAttribute("fill", "#ffffff");
+      ltx.textContent = isNo ? "\u2715" : (isOk ? "\u2713" : ld.cnt);
+      lg.appendChild(ltx);
+
+      var prefix = isNo ? "NO COVER: " : (isOk ? "BOOKED: " : (ld.haz ? "HAZ: " : "LOAD: "));
+      var lStr = prefix + ld.name;
+      var lPillW = lStr.length * 6.4 + 10;
+      var lRect = document.createElementNS(ns, "rect");
+      lRect.setAttribute("x", sz + 5); lRect.setAttribute("y", "-8");
+      lRect.setAttribute("width", lPillW); lRect.setAttribute("height", "16");
+      lRect.setAttribute("class", (ld.haz || isNo) ? "lbl-bg h" : "lbl-bg g");
+      lg.appendChild(lRect);
+
+      var llb = document.createElementNS(ns, "text");
+      llb.setAttribute("x", sz + 10); llb.setAttribute("y", "3.5");
+      llb.setAttribute("class", (ld.haz || isNo) ? "lbl h" : "lbl g");
+      llb.textContent = lStr;
+      lg.appendChild(llb);
+
+      var nearHtml = near.length ? near.map(function(n) { return n.name + (n.haz ? " [HAZ]" : "") + " (" + n.cnt + "x, ~" + n.mi + " mi)"; }).join("<br>") : "No fleet available";
+      var statusNote = isNo ? '<div style="color:#f87171;font-weight:700;margin-top:2px;">&#10005; Marked Cannot Cover</div>'
+                     : isOk ? '<div style="color:#34d399;font-weight:700;margin-top:2px;">&#10003; Confirmed &amp; Booked</div>' : '';
+      lg.onmousemove = function(e) {
+        showTip(e, '<strong style="color:' + col + ';">' + (ld.haz ? "&#9763; HAZARDOUS LOAD" : "OFFERED LOAD") + ': ' + ld.name + ' (' + ld.cnt + 'x)</strong>' + statusNote + '<div style="color:#cbd5e1;font-size:11px;margin-top:4px;">' + nearHtml + '</div>', col);
+      };
+      lg.onmouseleave = hideTip;
+
+      pins.appendChild(lg);
+
+      // Build Sidebar Load Card with Red X on Left and Green Tick on Right
+      var card = document.createElement("div");
+      card.className = "card ld" + (ld.haz && !isNo && !isOk ? " hz" : "") + (isNo ? " uncovered" : "") + (isOk ? " booked" : "");
+
+      var noBtn = document.createElement("button");
+      noBtn.type = "button";
+      noBtn.className = "status-chk no-btn" + (isNo ? " active" : "");
+      noBtn.title = "Cannot Cover (Red X)";
+      noBtn.innerHTML = "&#10005;";
+      noBtn.onclick = function() { toggleLoadStatus(ld.name, "no"); };
+
+      var mid = document.createElement("div");
+      mid.className = "load-mid";
+      var mTxt = isNo ? "Cannot cover (marked by Ops)"
+               : isOk ? "Confirmed / Booked"
+               : (near.length ? (ld.haz && !near[0].haz ? "Nearest (non-ADR): " : "Nearest: ") + near.map(function(n) { return n.name + " (~" + n.mi + "m)"; }).join(" | ") : "No fleet available");
+
+      var statusBadge = isNo ? '<span class="tag nc">&#10005; NO COVER</span>'
+                      : isOk ? '<span class="tag bk">&#10003; BOOKED</span>' : '';
+      var hazBadge = ld.haz ? '<span class="tag h">&#9763; HAZ</span>' : '';
+
+      mid.innerHTML = '<div class="card-title" style="color:' + (ld.haz ? "#fca5a5" : "#6ee7b7") + ';">' +
+                      escHtml(ld.name) + ' (' + ld.cnt + 'x)' + hazBadge + statusBadge +
+                      '</div><div class="card-sub">' + escHtml(mTxt) + '</div>';
+
+      var okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "status-chk ok-btn" + (isOk ? " active" : "");
+      okBtn.title = "Load Confirmed / Booked (Green Tick)";
+      okBtn.innerHTML = "&#10003;";
+      okBtn.onclick = function() { toggleLoadStatus(ld.name, "ok"); };
+
+      card.appendChild(noBtn);
+      card.appendChild(mid);
+      card.appendChild(okBtn);
+      lList.appendChild(card);
+    })(loads[l]);
+  }
+
+  applyTransform();
+
+  var msg = document.getElementById("msg");
+  if (miss.length) { msg.style.display = "block"; msg.textContent = "Not found: " + miss.join(", "); }
+  else if (pend.length) { msg.style.display = "block"; msg.textContent = "Locating: " + pend.join(", ") + "..."; }
+  else { msg.style.display = "none"; }
+
+  if (pend.length) {
+    clearTimeout(timer);
+    timer = setTimeout(function() { for (var p = 0; p < pend.length; p++) lookup(pend[p]); }, 500);
+  }
+}
+
+run();
+pullFromCloud();
+setInterval(pullFromCloud, 2500);
+</script>
+</body>
+</html>
