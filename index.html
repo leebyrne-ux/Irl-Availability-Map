@@ -181,7 +181,7 @@
 </head>
 <body>
 <div class="sidebar">
-  <div class="header"><h1><span class="ie-badge">IE</span> All-Ireland Board</h1><span class="pill" id="status">v19.3-IE LIVE</span></div>
+  <div class="header"><h1><span class="ie-badge">IE</span> All-Ireland Board</h1><span class="pill" id="status">v19.4-IE LIVE</span></div>
   <div class="sync-bar"><span id="sync-info">Connecting to crew board...</span><span id="last-time">--:--</span></div>
   <div class="stats">
     <div class="stat"><b id="s-units">0</b><span>Available</span></div>
@@ -194,7 +194,7 @@
   </div>
   <div>
     <label><span>2. Potential Load Offers</span><span style="color:#34d399;font-size:11px;">&#10005; No Cover &bull; &#10003; Booked</span></label>
-    <textarea id="loads" oninput="onUserEdit()" placeholder="e.g. Cork Haz, Galway, BT36, Y35"></textarea>
+    <textarea id="loads" oninput="onUserEdit()" placeholder="e.g. Cork Haz, Galway, BT36, X91 PX5V"></textarea>
   </div>
   <div class="btns">
     <button type="button" class="btn-sub" onclick="clearLoadsOnly()">Clear Loads</button>
@@ -749,7 +749,7 @@ var EIRCODE_KEYS = {
 };
 
 var CACHE = {}, BUSY = {}, MISS = {}, timer = null, pushTimer = null, isTyping = false, lastSnapshot = "", chatMessages = [], loadStatuses = {};
-try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v193") || "{}"); } catch (e) {}
+try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v194") || "{}"); } catch (e) {}
 
 function miles(a, b) {
   var dLat = (b.lat - a.lat) * 0.0174533, dLon = (b.lon - a.lon) * 0.0174533;
@@ -864,7 +864,7 @@ function onUserEdit() {
 
 function pushToCloud() {
   if (!DB_URL || DB_URL.indexOf("http") !== 0) {
-    setSyncState("LOCAL ONLY", "busy", "Add Firebase URL on line 225 to sync");
+    setSyncState("LOCAL ONLY", "busy", "Add Firebase URL to sync");
     return;
   }
   setSyncState("SAVING...", "busy", "Sending update to crew...");
@@ -886,7 +886,7 @@ function pushToCloud() {
 
 function pullFromCloud() {
   if (!DB_URL || DB_URL.indexOf("http") !== 0) {
-    setSyncState("LOCAL ONLY", "busy", "Add Firebase URL on line 225 to sync");
+    setSyncState("LOCAL ONLY", "busy", "Add Firebase URL to sync");
     return;
   }
   if (isTyping) return;
@@ -936,6 +936,12 @@ function getEircodeInfo(w) {
   return null;
 }
 
+function saveCacheAndRun(q, val) {
+  CACHE[q] = val;
+  try { localStorage.setItem("ie_geo_v194", JSON.stringify(CACHE)); } catch (e) {}
+  run();
+}
+
 function lookup(q) {
   if (!q || BUSY[q] || MISS[q] || CACHE[q]) return;
   BUSY[q] = true;
@@ -946,46 +952,61 @@ function lookup(q) {
   var isBtOut  = (w.length === 1 && w[0].indexOf("bt") === 0 && w[0].length >= 3 && w[0].length <= 4 && isNum(w[0].charAt(2)));
   var eir = getEircodeInfo(w);
 
+  // 1. 3-character Eircode Routing Key (e.g. "X91", "Y35") -> Instant match
   if (eir && !eir.full) {
     delete BUSY[q];
-    CACHE[q] = EIRCODE_KEYS[eir.key];
-    try { localStorage.setItem("ie_geo_v193", JSON.stringify(CACHE)); } catch (e) {}
-    run();
+    saveCacheAndRun(q, EIRCODE_KEYS[eir.key]);
     return;
   }
 
+  // 2. Full 7-character Eircode (e.g. "X91 PX5V" or "X91PX5V") -> Try Nominatim structured postalcode first, fallback to Routing Key
+  if (eir && eir.full) {
+    var nomUrl = "https://nominatim.openstreetmap.org/search?format=json&countrycodes=ie&limit=1&postalcode=" + encodeURIComponent(eir.full);
+    fetch(nomUrl)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        delete BUSY[q];
+        if (d && d.length > 0) {
+          var lat = parseFloat(d[0].lat), lon = parseFloat(d[0].lon);
+          if (lat >= 51.3 && lat <= 55.5 && lon >= -10.7 && lon <= -5.3) {
+            var town = d[0].display_name.split(",")[0];
+            saveCacheAndRun(q, [eir.full + " (" + town + ")", lat, lon, EIRCODE_KEYS[eir.key][3]]);
+            return;
+          }
+        }
+        var base = EIRCODE_KEYS[eir.key];
+        saveCacheAndRun(q, [eir.full + " - " + base[0], base[1], base[2], base[3]]);
+      })
+      .catch(function() {
+        delete BUSY[q];
+        var base = EIRCODE_KEYS[eir.key];
+        saveCacheAndRun(q, [eir.full + " - " + base[0], base[1], base[2], base[3]]);
+      });
+    return;
+  }
+
+  // 3. Northern Ireland BT Postcodes & General Irish Towns
   var url = isBtFull ? ("https://api.postcodes.io/postcodes/" + encodeURIComponent(joined))
           : isBtOut  ? ("https://api.postcodes.io/outcodes/" + encodeURIComponent(w[0]))
-          : eir      ? ("https://photon.komoot.io/api/?limit=1&lat=53.4&lon=-7.8&q=" + encodeURIComponent(eir.full + " Ireland"))
-          : ("https://photon.komoot.io/api/?limit=1&lat=53.4&lon=-7.8&q=" + encodeURIComponent(q + " Ireland"));
+          : ("https://photon.komoot.io/api/?limit=1&lat=53.4&lon=-7.8&bbox=-10.7,51.3,-5.3,55.5&q=" + encodeURIComponent(q));
 
   fetch(url).then(function(r) { return r.json(); }).then(function(d) {
     delete BUSY[q];
     if ((isBtFull || isBtOut) && d && d.status === 200 && d.result) {
-      CACHE[q] = [d.result.postcode || d.result.outcode, d.result.latitude, d.result.longitude, d.result.admin_district || "Northern Ireland (BT)"];
+      saveCacheAndRun(q, [d.result.postcode || d.result.outcode, d.result.latitude, d.result.longitude, d.result.admin_district || "Northern Ireland (BT)"]);
     } else if (!isBtFull && !isBtOut && d && d.features && d.features.length > 0) {
       var feat = d.features[0];
       var coords = feat.geometry.coordinates;
       var props = feat.properties || {};
       var placeName = props.name || props.city || props.town || props.county || q;
-      var label = eir ? (eir.full + " (" + placeName + ")") : placeName;
-      CACHE[q] = [label, coords[1], coords[0], props.county || (eir ? "Eircode Location" : "Ireland Location")];
-    } else if (eir && EIRCODE_KEYS[eir.key]) {
-      var base = EIRCODE_KEYS[eir.key];
-      CACHE[q] = [eir.full + " - " + base[0], base[1], base[2], base[3]];
+      saveCacheAndRun(q, [placeName, coords[1], coords[0], props.county || "Ireland Location"]);
     } else {
       MISS[q] = true;
+      run();
     }
-    try { localStorage.setItem("ie_geo_v193", JSON.stringify(CACHE)); } catch (e) {}
-    run();
   }).catch(function() {
     delete BUSY[q];
-    if (eir && EIRCODE_KEYS[eir.key]) {
-      var base = EIRCODE_KEYS[eir.key];
-      CACHE[q] = [eir.full + " - " + base[0], base[1], base[2], base[3]];
-    } else {
-      MISS[q] = true;
-    }
+    MISS[q] = true;
     run();
   });
 }
