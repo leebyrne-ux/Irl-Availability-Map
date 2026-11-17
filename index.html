@@ -54,6 +54,8 @@
 
   .load-mid { flex: 1; min-width: 0; }
   .card-title { font-size: 12.5px; font-weight: 600; color: #f1f5f9; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+  .card-title a { color: inherit; text-decoration: none; }
+  .card-title a:hover { text-decoration: underline; }
   .card-sub { font-size: 10.5px; color: #8fb3a8; margin-top: 2px; }
 
   .status-chk {
@@ -181,7 +183,7 @@
 </head>
 <body>
 <div class="sidebar">
-  <div class="header"><h1><span class="ie-badge">IE</span> All-Ireland Board</h1><span class="pill" id="status">v19.4-IE LIVE</span></div>
+  <div class="header"><h1><span class="ie-badge">IE</span> All-Ireland Board</h1><span class="pill" id="status">v19.5-IE LIVE</span></div>
   <div class="sync-bar"><span id="sync-info">Connecting to crew board...</span><span id="last-time">--:--</span></div>
   <div class="stats">
     <div class="stat"><b id="s-units">0</b><span>Available</span></div>
@@ -236,7 +238,7 @@
     <div class="row"><span class="dia hz"></span> &#9763; Haz / Uncovered Load</div>
   </div>
 
-  <div class="zoom-hint">Scroll wheel to zoom &bull; Drag to pan &bull; Auto-syncs with crew</div>
+  <div class="zoom-hint">Scroll wheel to zoom &bull; Drag to pan &bull; Click load name to open Maps</div>
   <div class="zoom-controls">
     <button type="button" class="zoom-btn" onclick="stepZoom(-0.45)" title="Zoom Out">&minus;</button>
     <span class="zoom-level" id="zoom-pct">100%</span>
@@ -502,6 +504,7 @@ var HUBS = {
   "north west":         ["North West Region",           54.4500, -8.1500, "Sligo / Donegal / Leitrim / Derry"],
   "border":             ["Border Corridor",             54.0500, -6.5500, "Dundalk / Newry / Monaghan / Cavan"],
 
+  // Major Ports & Industrial Estates / Logistics Parks
   "dublin port":        ["Dublin Port",                 53.3468, -6.1972, "Dublin Port / East Wall (M50/M1)"],
   "rosslare":           ["Rosslare Europort",           52.2533, -6.3372, "Co. Wexford Ferry Port (N25/M11)"],
   "ringaskiddy":        ["Ringaskiddy Port",            51.8325, -8.3214, "Port of Cork (N28)"],
@@ -511,7 +514,20 @@ var HUBS = {
   "belview":            ["Belview Port (Waterford)",    52.2635, -7.0185, "Port of Waterford (N29/M9)"],
   "foynes":             ["Foynes Port",                 52.6114, -9.1086, "Shannon Foynes Port (N69)"],
   "greenore":           ["Greenore Port",               54.0322, -6.1328, "Co. Louth Port"],
+  "citywest":           ["Citywest Business Campus",    53.2855, -6.4335, "Dublin 24 (N7/M50)"],
+  "park west":          ["Park West Industrial Park",   53.3325, -6.3725, "Dublin 12 (M50 J9)"],
+  "damastown":          ["Damastown Industrial Park",   53.4135, -6.4125, "Dublin 15 (N3/M50)"],
+  "ballymount":         ["Ballymount Industrial Est",   53.3115, -6.3535, "Dublin 12 (M50 J10)"],
+  "greenogue":          ["Greenogue Business Park",     53.2985, -6.4625, "Rathcoole Co. Dublin (N7)"],
+  "clonshaugh":         ["Clonshaugh Business Park",    53.4045, -6.2245, "Dublin 17 (M50/M1)"],
+  "little island":      ["Little Island Industrial",    51.9065, -8.3535, "Co. Cork (N25/M8)"],
+  "raheen":             ["Raheen Business Park",        52.6255, -8.6655, "Limerick (M20/N18)"],
+  "parkmore":           ["Parkmore Business Park",      53.2985, -8.9935, "Galway (M6/N6)"],
+  "oranmore":           ["Oranmore",                    53.2685, -8.9265, "Co. Galway (M6/M18)"],
+  "mallusk":            ["Mallusk Industrial Est",      54.6855, -5.9935, "Newtownabbey (M2 J4)"],
+  "duncrue":            ["Duncrue Industrial Est",      54.6235, -5.9085, "Belfast Harbour (M2)"],
 
+  // Republic of Ireland Cities, Towns & Counties
   "dublin":             ["Dublin",                      53.3498, -6.2603, "Co. Dublin (M50 Hub)"],
   "blanchardstown":     ["Blanchardstown",              53.3881, -6.3756, "Dublin 15 (M50/N3)"],
   "tallaght":           ["Tallaght",                    53.2878, -6.3734, "Dublin 24 (M50/N81)"],
@@ -577,6 +593,7 @@ var HUBS = {
   "cavan":              ["Cavan",                       53.9908, -7.3606, "Co. Cavan (N3)"],
   "monaghan":           ["Monaghan",                    54.2492, -6.9683, "Co. Monaghan (N2)"],
 
+  // Northern Ireland Cities, Towns & Counties
   "belfast":            ["Belfast",                     54.5973, -5.9301, "Co. Antrim / Down (M1/M2)"],
   "lisburn":            ["Lisburn",                     54.5162, -6.0580, "Co. Antrim (M1)"],
   "newry":              ["Newry",                       54.1751, -6.3402, "Co. Down / Armagh (A1)"],
@@ -607,6 +624,7 @@ var HUBS = {
 
 var HUB_KEYS = Object.keys(HUBS).sort(function(a, b) { return b.length - a.length; });
 
+// All 139 Irish Eircode Routing Keys (Instant Zero-Latency Resolution)
 var EIRCODE_KEYS = {
   "a41":["Ballyboughal (A41)",53.5208,-6.2664,"Co. Dublin"],
   "a42":["Garristown (A42)",53.5681,-6.3853,"Co. Dublin"],
@@ -749,7 +767,7 @@ var EIRCODE_KEYS = {
 };
 
 var CACHE = {}, BUSY = {}, MISS = {}, timer = null, pushTimer = null, isTyping = false, lastSnapshot = "", chatMessages = [], loadStatuses = {};
-try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v194") || "{}"); } catch (e) {}
+try { CACHE = JSON.parse(localStorage.getItem("ie_geo_v195") || "{}"); } catch (e) {}
 
 function miles(a, b) {
   var dLat = (b.lat - a.lat) * 0.0174533, dLon = (b.lon - a.lon) * 0.0174533;
@@ -923,22 +941,29 @@ function pullFromCloud() {
     });
 }
 
-function getEircodeInfo(w) {
-  if (w.length === 1 && w[0].length === 3 && EIRCODE_KEYS[w[0]]) {
-    return { key: w[0], full: "" };
-  }
-  if (w.length === 1 && w[0].length === 7 && EIRCODE_KEYS[w[0].slice(0, 3)]) {
-    return { key: w[0].slice(0, 3), full: (w[0].slice(0, 3) + " " + w[0].slice(3)).toUpperCase() };
-  }
-  if (w.length === 2 && w[0].length === 3 && w[1].length === 4 && EIRCODE_KEYS[w[0]]) {
-    return { key: w[0], full: (w[0] + " " + w[1]).toUpperCase() };
+// Detects any 3-char Eircode Routing Key OR 7-char full Eircode (with or without space)
+function matchEircodeInstant(tok) {
+  for (var i = 0; i < tok.length; i++) {
+    var w = tok[i];
+    if (w.length === 3 && EIRCODE_KEYS[w]) {
+      var b1 = EIRCODE_KEYS[w];
+      return { name: b1[0], lat: b1[1], lon: b1[2], reg: b1[3], rawQuery: w.toUpperCase() };
+    }
+    if (w.length === 7 && EIRCODE_KEYS[w.slice(0, 3)]) {
+      var k7 = w.slice(0, 3), b7 = EIRCODE_KEYS[k7], full7 = (k7 + " " + w.slice(3)).toUpperCase();
+      return { name: full7 + " - " + b7[0], lat: b7[1], lon: b7[2], reg: b7[3], rawQuery: full7 };
+    }
+    if (w.length === 3 && EIRCODE_KEYS[w] && i + 1 < tok.length && tok[i + 1].length === 4) {
+      var b2 = EIRCODE_KEYS[w], full2 = (w + " " + tok[i + 1]).toUpperCase();
+      return { name: full2 + " - " + b2[0], lat: b2[1], lon: b2[2], reg: b2[3], rawQuery: full2 };
+    }
   }
   return null;
 }
 
 function saveCacheAndRun(q, val) {
   CACHE[q] = val;
-  try { localStorage.setItem("ie_geo_v194", JSON.stringify(CACHE)); } catch (e) {}
+  try { localStorage.setItem("ie_geo_v195", JSON.stringify(CACHE)); } catch (e) {}
   run();
 }
 
@@ -950,42 +975,7 @@ function lookup(q) {
   var joined = w.join("");
   var isBtFull = (joined.indexOf("bt") === 0 && joined.length >= 6 && joined.length <= 7 && isNum(joined.charAt(2)));
   var isBtOut  = (w.length === 1 && w[0].indexOf("bt") === 0 && w[0].length >= 3 && w[0].length <= 4 && isNum(w[0].charAt(2)));
-  var eir = getEircodeInfo(w);
 
-  // 1. 3-character Eircode Routing Key (e.g. "X91", "Y35") -> Instant match
-  if (eir && !eir.full) {
-    delete BUSY[q];
-    saveCacheAndRun(q, EIRCODE_KEYS[eir.key]);
-    return;
-  }
-
-  // 2. Full 7-character Eircode (e.g. "X91 PX5V" or "X91PX5V") -> Try Nominatim structured postalcode first, fallback to Routing Key
-  if (eir && eir.full) {
-    var nomUrl = "https://nominatim.openstreetmap.org/search?format=json&countrycodes=ie&limit=1&postalcode=" + encodeURIComponent(eir.full);
-    fetch(nomUrl)
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        delete BUSY[q];
-        if (d && d.length > 0) {
-          var lat = parseFloat(d[0].lat), lon = parseFloat(d[0].lon);
-          if (lat >= 51.3 && lat <= 55.5 && lon >= -10.7 && lon <= -5.3) {
-            var town = d[0].display_name.split(",")[0];
-            saveCacheAndRun(q, [eir.full + " (" + town + ")", lat, lon, EIRCODE_KEYS[eir.key][3]]);
-            return;
-          }
-        }
-        var base = EIRCODE_KEYS[eir.key];
-        saveCacheAndRun(q, [eir.full + " - " + base[0], base[1], base[2], base[3]]);
-      })
-      .catch(function() {
-        delete BUSY[q];
-        var base = EIRCODE_KEYS[eir.key];
-        saveCacheAndRun(q, [eir.full + " - " + base[0], base[1], base[2], base[3]]);
-      });
-    return;
-  }
-
-  // 3. Northern Ireland BT Postcodes & General Irish Towns
   var url = isBtFull ? ("https://api.postcodes.io/postcodes/" + encodeURIComponent(joined))
           : isBtOut  ? ("https://api.postcodes.io/outcodes/" + encodeURIComponent(w[0]))
           : ("https://photon.komoot.io/api/?limit=1&lat=53.4&lon=-7.8&bbox=-10.7,51.3,-5.3,55.5&q=" + encodeURIComponent(q));
@@ -1033,6 +1023,15 @@ function parse(text, missList, pendList) {
       if (!used) rem.push(w);
     }
     if (cnt === 1 && times.length > 1) cnt = times.length;
+
+    // 1. Instant Eircode Match (zero network delay, works for X91 PX5V, X91PX5V, or X91)
+    var eirMatch = matchEircodeInstant(rem);
+    if (eirMatch) {
+      out.push({ name: eirMatch.name, lat: eirMatch.lat, lon: eirMatch.lon, reg: eirMatch.reg, rawQuery: eirMatch.rawQuery, cnt: cnt, times: times, night: night, haz: haz });
+      continue;
+    }
+
+    // 2. Built-in Irish Hubs, Ports, Industrial Estates & Counties
     var found = null;
     for (var hk = 0; hk < HUB_KEYS.length; hk++) {
       var k = HUB_KEYS[hk];
@@ -1041,7 +1040,7 @@ function parse(text, missList, pendList) {
     var q = rem.join(" ").trim();
     if (!found && q && CACHE[q]) found = CACHE[q];
     if (found) {
-      out.push({ name: found[0], lat: found[1], lon: found[2], reg: found[3], cnt: cnt, times: times, night: night, haz: haz });
+      out.push({ name: found[0], lat: found[1], lon: found[2], reg: found[3], rawQuery: found[0], cnt: cnt, times: times, night: night, haz: haz });
     } else if (q.length >= 2 && !isNum(q)) {
       if (MISS[q]) missList.push(line); else pendList.push(q);
     }
@@ -1053,7 +1052,7 @@ function merge(arr) {
   var m = {}, res = [];
   for (var i = 0; i < arr.length; i++) {
     var x = arr[i];
-    if (!m[x.name]) { m[x.name] = { name: x.name, lat: x.lat, lon: x.lon, reg: x.reg, cnt: x.cnt, times: x.times.slice(), night: x.night, haz: x.haz }; }
+    if (!m[x.name]) { m[x.name] = { name: x.name, lat: x.lat, lon: x.lon, reg: x.reg, rawQuery: x.rawQuery || x.name, cnt: x.cnt, times: x.times.slice(), night: x.night, haz: x.haz }; }
     else {
       m[x.name].cnt += x.cnt;
       if (x.night) m[x.name].night = true;
@@ -1268,9 +1267,10 @@ function run() {
       var statusBadge = isNo ? '<span class="tag nc">&#10005; NO COVER</span>'
                       : isOk ? '<span class="tag bk">&#10003; BOOKED</span>' : '';
       var hazBadge = ld.haz ? '<span class="tag h">&#9763; HAZ</span>' : '';
+      var mapHref = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(ld.rawQuery + ", Ireland");
 
       mid.innerHTML = '<div class="card-title" style="color:' + (ld.haz ? "#fca5a5" : "#6ee7b7") + ';">' +
-                      escHtml(ld.name) + ' (' + ld.cnt + 'x)' + hazBadge + statusBadge +
+                      '<a href="' + mapHref + '" target="_blank" rel="noopener" title="Open exact Eircode / location in Google Maps">' + escHtml(ld.name) + ' &#8599;</a> (' + ld.cnt + 'x)' + hazBadge + statusBadge +
                       '</div><div class="card-sub">' + escHtml(mTxt) + '</div>';
 
       var okBtn = document.createElement("button");
